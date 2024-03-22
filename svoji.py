@@ -22,9 +22,6 @@ def set_dll_search_path():
 set_dll_search_path()
 
 
-import cairosvg
-
-
 from io import BytesIO
 import cv2
 import mediapipe as mp
@@ -35,9 +32,6 @@ import drawsvg
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-# Rectangular region parameters
-top_left_x, top_left_y = 250, 100
-bottom_right_x, bottom_right_y = 500, 350
 
 def compile_connected(d: drawsvg.Drawing, face_landmarks, indices):
     p = drawsvg.Path(stroke_width=2, stroke='lime', fill='black', fill_opacity=0.2)

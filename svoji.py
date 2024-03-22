@@ -39,44 +39,31 @@ face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_con
 top_left_x, top_left_y = 250, 100
 bottom_right_x, bottom_right_y = 500, 350
 
+def compile_connected(d: drawsvg.Drawing, face_landmarks, indices):
+    p = drawsvg.Path(stroke_width=2, stroke='lime', fill='black', fill_opacity=0.2)
+
+    # first point
+    p.M(face_landmarks.landmark[indices[0]].x * d.width, face_landmarks.landmark[indices[0]].y * d.height)
+
+    # remaining points
+    for i in indices[1:]:
+        p.L(face_landmarks.landmark[i].x * d.width, face_landmarks.landmark[i].y * d.height)
+
+    d.append(p)
+
 
 def process_svoji(image):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     results = face_mesh.process(image)
 
-    img_h, img_w, img_c = image.shape
-
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
-            nose_top = face_landmarks.landmark[195]
-            nose_mid = face_landmarks.landmark[1]
-            nose_bot = face_landmarks.landmark[2]
-
-            right_eye1 = face_landmarks.landmark[33]
-            right_eye2 = face_landmarks.landmark[133]
-
-            left_eye1 = face_landmarks.landmark[263]
-            left_eye2 = face_landmarks.landmark[362]
-
             d = drawsvg.Drawing(800, 400)
 
-            # Nose
-            p = drawsvg.Path(stroke_width=2, stroke='lime', fill='black', fill_opacity=0.2)
-            p.M(nose_top.x * img_w, nose_top.y * img_h)  # Start path at point (nose_top)
-            #p.C(30, 10, 30, -50, 70, -20)  # Draw a curve to (70, -20)
-            p.L(nose_mid.x * img_w, nose_mid.y * img_h)
-            p.L(nose_bot.x * img_w, nose_bot.y * img_h)
-
-            # Right eye
-            p.M(right_eye1.x * img_w, right_eye1.y * img_h)
-            p.L(right_eye2.x * img_w, right_eye2.y * img_h)
-
-            # Left eye
-            p.M(left_eye1.x * img_w, left_eye1.y * img_h)
-            p.L(left_eye2.x * img_w, left_eye2.y * img_h)
-
-            d.append(p)
+            compile_connected(d, face_landmarks, (195, 1, 2))
+            compile_connected(d, face_landmarks, (33, 133))
+            compile_connected(d, face_landmarks, (263, 362))
 
             png_io = BytesIO()
             d.save_png(png_io)

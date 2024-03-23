@@ -2,7 +2,7 @@
 # I tried the below dll searcher/importer
 # I manually installed cairo using vcpkg
 #   if/when that fails, make sure your working directory path has NO SPACES
-
+import math
 import os
 
 def set_dll_search_path():
@@ -55,9 +55,30 @@ def process_svoji(image):
         for face_landmarks in results.multi_face_landmarks:
             d = drawsvg.Drawing(800, 400)
 
+            right_eye1 = face_landmarks.landmark[159]
+            right_eye2 = face_landmarks.landmark[153]
+            left_eye1 = face_landmarks.landmark[386]
+            left_eye2 = face_landmarks.landmark[380]
+
+            # get distance between each per-eye point
+            # x^2 + y^2 = z^2
+            right_radius = math.sqrt(((right_eye2.x - right_eye1.x)**2) + ((right_eye2.y - right_eye1.y)**2))
+            left_radius = math.sqrt(((left_eye2.x - left_eye1.x) ** 2) + ((left_eye2.y - left_eye1.y) ** 2))
+
+            right_eye_point = ((right_eye1.x + right_eye2.x) / 2, (right_eye1.y + right_eye2.y) / 2)
+            left_eye_point = ((left_eye1.x + left_eye2.x) / 2, (left_eye1.y + left_eye2.y) / 2)
+
+            # TODO scaling of radius with width is not correct
+            d.append(drawsvg.Circle(right_eye_point[0] * d.width, right_eye_point[1] * d.height, right_radius * d.width,
+                                 fill='lime', stroke_width=1, stroke='black'))
+            d.append(drawsvg.Circle(left_eye_point[0] * d.width, left_eye_point[1] * d.height, left_radius * d.width,
+                                    fill='lime', stroke_width=1, stroke='black'))
+
+            """
             compile_connected(d, face_landmarks, (195, 1, 2))
             compile_connected(d, face_landmarks, (33, 133))
             compile_connected(d, face_landmarks, (263, 362))
+            """
 
             png_io = BytesIO()
             d.save_png(png_io)

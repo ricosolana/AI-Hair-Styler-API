@@ -8,6 +8,7 @@ import cv2
 import drawsvg
 import mediapipe as mp
 import numpy as np
+import pyvirtualcam
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -76,13 +77,14 @@ def compile_linear(d: drawsvg.Drawing, face_landmarks, indices, smooth=False):
 
 
 def process_svoji(image):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     results = face_mesh.process(image)
 
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
-            d = drawsvg.Drawing(800, 400)
+            height, width, _ = image.shape
+            d = drawsvg.Drawing(width, height)
 
             right_eye1 = face_landmarks.landmark[159]
             right_eye2 = face_landmarks.landmark[153]
@@ -91,19 +93,28 @@ def process_svoji(image):
 
             # get distance between each per-eye point
             # x^2 + y^2 = z^2
-            right_radius = math.sqrt(((right_eye2.x - right_eye1.x)**2) + ((right_eye2.y - right_eye1.y)**2))
-            left_radius = math.sqrt(((left_eye2.x - left_eye1.x) ** 2) + ((left_eye2.y - left_eye1.y) ** 2))
+            #right_radius = math.sqrt(((right_eye2.x - right_eye1.x)**2) + ((right_eye2.y - right_eye1.y)**2)) * d.width
+            #left_radius = math.sqrt(((left_eye2.x - left_eye1.x) ** 2) + ((left_eye2.y - left_eye1.y) ** 2)) * d.width
+
+            right_radius = 4
+            left_radius = 4
 
             right_eye_point = ((right_eye1.x + right_eye2.x) / 2, (right_eye1.y + right_eye2.y) / 2)
             left_eye_point = ((left_eye1.x + left_eye2.x) / 2, (left_eye1.y + left_eye2.y) / 2)
 
             # TODO scaling of radius with width is not correct
-            d.append(drawsvg.Circle(right_eye_point[0] * d.width, right_eye_point[1] * d.height, right_radius * d.width,
+            d.append(drawsvg.Circle(right_eye_point[0] * d.width, right_eye_point[1] * d.height, right_radius,
                                  fill='lime', stroke_width=1, stroke='black'))
-            d.append(drawsvg.Circle(left_eye_point[0] * d.width, left_eye_point[1] * d.height, left_radius * d.width,
+            d.append(drawsvg.Circle(left_eye_point[0] * d.width, left_eye_point[1] * d.height, left_radius,
                                     fill='lime', stroke_width=1, stroke='black'))
 
-            compile_linear(d, face_landmarks, (57, 178, 402, 287), smooth=True)
+            #compile_linear(d, face_landmarks, (57, 178, 402, 287), smooth=True)
+
+            compile_linear(d, face_landmarks, (78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308), smooth=True)
+
+            #compile_linear(d, face_landmarks, (57, 91, 321, 287), smooth=False)
+
+
 
             # 57, 287
 
@@ -112,11 +123,9 @@ def process_svoji(image):
 
 
 
-            """
-            compile_connected(d, face_landmarks, (195, 1, 2))
-            compile_connected(d, face_landmarks, (33, 133))
-            compile_connected(d, face_landmarks, (263, 362))
-            """
+            compile_linear(d, face_landmarks, (195, 1, 2), smooth=True)
+            #compile_linear(d, face_landmarks, (263, 362))
+            #compile_linear(d, face_landmarks, (33, 133))
 
             png_io = BytesIO()
             d.save_png(png_io)
@@ -131,24 +140,32 @@ def process_svoji(image):
 
 
 if __name__ == '__main__':
-    # test
-
     cap = cv2.VideoCapture(0)
 
-    while cap.isOpened():
-        success, image = cap.read()
+    if cap.isOpened():
+        cam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cam = pyvirtualcam.Camera(width=cam_width,
+                                  height=cam_height,
+                                  fps=int(cap.get(cv2.CAP_PROP_FPS)))
 
-        image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, (800, 400))
+        while cap.isOpened():
+            success, image = cap.read()
 
-        cv2.imshow('Capture', image)
+            image = cv2.flip(image, 1)
 
-        conv_image = process_svoji(image)
+            conv_image = process_svoji(image)
 
-        if conv_image is not None:
-            cv2.imshow('Converted', conv_image)
+            scaled_image = cv2.resize(image, (800, 400))
+            cv2.imshow('Capture', scaled_image)
 
-        if cv2.waitKey(1) == 27:
-            break  # esc to quit
+            if conv_image is not None:
+                scaled_conv_image = cv2.resize(conv_image, (800, 400))
+                cv2.imshow('Converted', scaled_conv_image)
+
+                cam.send(conv_image)
+
+            if cv2.waitKey(1) == 27:
+                break  # esc to quit
 
     cv2.destroyAllWindows()

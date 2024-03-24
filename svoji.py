@@ -40,8 +40,9 @@ def catmull_rom_to_bezier_vectorized(points):
     return np.matmul(conversion_matrix, A) / 6
 
 
-def compile_linear(d: drawsvg.Drawing, face_landmarks, indices, smooth=False):
-    p = drawsvg.Path(stroke_width=2, stroke='lime', fill='black', fill_opacity=0.2)
+def compile_linear(d: drawsvg.Drawing, face_landmarks, indices,
+                   smooth=False, fill='black', stroke_width=2, stroke='none'):
+    p = drawsvg.Path(stroke_width=stroke_width, stroke=stroke, fill=fill)
 
     # first point
     p.M(face_landmarks.landmark[indices[0]].x * d.width, face_landmarks.landmark[indices[0]].y * d.height)
@@ -96,6 +97,14 @@ def process_svoji(image):
             #right_radius = math.sqrt(((right_eye2.x - right_eye1.x)**2) + ((right_eye2.y - right_eye1.y)**2)) * d.width
             #left_radius = math.sqrt(((left_eye2.x - left_eye1.x) ** 2) + ((left_eye2.y - left_eye1.y) ** 2)) * d.width
 
+            # using center of face, get far point on side of face for radius
+            # make this the circle "face"
+            face_center = face_landmarks.landmark[1]
+            face_outer = face_landmarks.landmark[10]
+            face_radius = math.sqrt((face_center.x-face_outer.x)**2 + (face_center.y-face_outer.y)**2) * d.width  # wrong scale
+            d.append(drawsvg.Circle(face_center.x * d.width, face_center.y * d.height, face_radius,
+                                    fill='orange'))
+
             right_radius = 4
             left_radius = 4
 
@@ -104,26 +113,25 @@ def process_svoji(image):
 
             # TODO scaling of radius with width is not correct
             d.append(drawsvg.Circle(right_eye_point[0] * d.width, right_eye_point[1] * d.height, right_radius,
-                                 fill='lime', stroke_width=1, stroke='black'))
+                                 fill='white'))
             d.append(drawsvg.Circle(left_eye_point[0] * d.width, left_eye_point[1] * d.height, left_radius,
-                                    fill='lime', stroke_width=1, stroke='black'))
+                                    fill='white'))
 
             #compile_linear(d, face_landmarks, (57, 178, 402, 287), smooth=True)
 
-            compile_linear(d, face_landmarks, (78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308), smooth=True)
+            compile_linear(d, face_landmarks, (78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308),
+                           smooth=True, fill='white')
 
             #compile_linear(d, face_landmarks, (57, 91, 321, 287), smooth=False)
 
-
+            # get face outline coordinates
+            #face_landmarks
 
             # 57, 287
 
             # 178, 402
 
-
-
-
-            compile_linear(d, face_landmarks, (195, 1, 2), smooth=True)
+            #compile_linear(d, face_landmarks, (195, 1, 2), smooth=True)  # nose
             #compile_linear(d, face_landmarks, (263, 362))
             #compile_linear(d, face_landmarks, (33, 133))
 
@@ -140,6 +148,8 @@ def process_svoji(image):
 
 
 if __name__ == '__main__':
+    UPSCALE_RATIO = (800, 400)
+
     cap = cv2.VideoCapture(0)
 
     if cap.isOpened():
@@ -156,11 +166,11 @@ if __name__ == '__main__':
 
             conv_image = process_svoji(image)
 
-            scaled_image = cv2.resize(image, (800, 400))
+            scaled_image = cv2.resize(image, UPSCALE_RATIO)
             cv2.imshow('Capture', scaled_image)
 
             if conv_image is not None:
-                scaled_conv_image = cv2.resize(conv_image, (800, 400))
+                scaled_conv_image = cv2.resize(conv_image, UPSCALE_RATIO)
                 cv2.imshow('Converted', scaled_conv_image)
 
                 cam.send(conv_image)

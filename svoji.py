@@ -4,6 +4,7 @@
 import math
 from io import BytesIO
 
+import cairosvg
 import cv2
 import drawsvg
 import mediapipe as mp
@@ -77,7 +78,10 @@ def compile_linear(d: drawsvg.Drawing, face_landmarks, indices,
     d.append(p)
 
 
-def process_svoji(image):
+"""
+@ output_type = 'png' | 'jpg' | 'np' | 'svg'
+"""
+def process_svoji(image, output_type='np'):
     #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     results = face_mesh.process(image)
@@ -135,14 +139,33 @@ def process_svoji(image):
             #compile_linear(d, face_landmarks, (263, 362))
             #compile_linear(d, face_landmarks, (33, 133))
 
-            png_io = BytesIO()
-            d.save_png(png_io)
-            png_io.seek(0)
+            bytes_io = BytesIO()
+            if output_type == 'np':
+                d.save_png(bytes_io)
+                bytes_io.seek(0)
+                png_bytes = np.asarray(bytearray(bytes_io.read()), dtype=np.uint8)
 
-            png_bytes = np.asarray(bytearray(png_io.read()), dtype=np.uint8)
-            conv_image = cv2.imdecode(png_bytes, cv2.IMREAD_COLOR)
+                return cv2.imdecode(png_bytes, cv2.IMREAD_COLOR)
+            elif output_type == 'png':
+                d.save_png(bytes_io)
+                bytes_io.seek(0)
+                return bytearray(bytes_io.read())
+            elif output_type in ('jpg', 'jpeg'):
+                d.save_png(bytes_io)
+                bytes_io.seek(0)
+                png_bytes = np.asarray(bytearray(bytes_io.read()), dtype=np.uint8)
 
-            return conv_image
+                conv_image = cv2.imdecode(png_bytes, cv2.IMREAD_COLOR)
+
+                res, png_bytes = cv2.imencode('.jpg', conv_image, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                return bytearray(png_bytes)
+            elif output_type == 'svg':
+                return d.as_svg().encode('utf-8')
+                #d.save_svg(bytes_io)
+                #bytes_io.seek(0)
+                #return bytearray(bytes_io.read())
+
+            return None
 
     return None
 

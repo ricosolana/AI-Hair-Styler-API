@@ -1,16 +1,16 @@
 import json
-import os
-from flask_socketio import SocketIO, emit
 
-from flask import Flask, jsonify, request, abort, Response
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 import cv2
 import numpy as np
-import proc
+from flask import Flask, jsonify, request, Response
+from flask_socketio import SocketIO
 from requests_toolbelt import MultipartEncoder
 
+import proc
+import svoji
+
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins='*')
+#socketio = SocketIO(app, cors_allowed_origins='*')
 #app.config['JWT_SECRET_KEY'] = os.environ.get('ai_jwt_key', 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy')
 #####app.config['JWT_SECRET_KEY'] = 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy'  # Change this!
 #jwt = JWTManager(app)
@@ -37,8 +37,29 @@ def api_pose_feed():
 """
 
 
-# TODO change to POST
-@app.route('/api/pose', methods=['GET'])
+@app.route('/api/svoji', methods=['POST'])
+def api_svoji():
+    # Check if there is a video stream in the request
+    f = request.files.get('image')
+    if f is None:
+        return jsonify({'message': 'No frame found in request'}), 400
+
+    original_image = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_UNCHANGED)
+    conv_image = svoji.process_svoji(original_image, 'svg')
+
+    if conv_image is None:
+        return jsonify({'message': 'Image recognition failed'}), 422
+
+    m = MultipartEncoder(
+        fields={
+            'image': ('converted', conv_image, 'image/svg'),
+        }
+    )
+
+    return Response(m.to_string(), mimetype=m.content_type)
+
+
+@app.route('/api/pose', methods=['POST'])
 def api_pose():
     while True:
         # Check if there is a video stream in the request
@@ -92,5 +113,5 @@ def api_pose():
 
 
 if __name__ == '__main__':
-    #app.run(host='127.0.0.1', port=80)
-    app.run(host='192.168.137.1', port=80)
+    app.run(host='127.0.0.1', port=80)
+    #app.run(host='192.168.137.1', port=80)

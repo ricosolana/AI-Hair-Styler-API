@@ -80,9 +80,13 @@ def compile_linear(d: drawsvg.Drawing, face_landmarks, indices,
 
 """
 @ output_type = 'png' | 'jpg' | 'np' | 'svg'
+TODO input_format=None, expected input
 """
-def process_svoji(image, output_type='np'):
+def process_svoji(image, output_format='np'):
     #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #cv2.COLORYUV4202RGB
+    #image = cv2.cvtColor(image, )
+    #image = cv2.cvtColor()
 
     results = face_mesh.process(image)
 
@@ -140,17 +144,17 @@ def process_svoji(image, output_type='np'):
             #compile_linear(d, face_landmarks, (33, 133))
 
             bytes_io = BytesIO()
-            if output_type == 'np':
+            if output_format == 'np':
                 d.save_png(bytes_io)
                 bytes_io.seek(0)
                 png_bytes = np.asarray(bytearray(bytes_io.read()), dtype=np.uint8)
 
                 return cv2.imdecode(png_bytes, cv2.IMREAD_COLOR)
-            elif output_type == 'png':
+            elif output_format == 'png':
                 d.save_png(bytes_io)
                 bytes_io.seek(0)
                 return bytearray(bytes_io.read())
-            elif output_type in ('jpg', 'jpeg'):
+            elif output_format in ('jpg', 'jpeg'):
                 d.save_png(bytes_io)
                 bytes_io.seek(0)
                 png_bytes = np.asarray(bytearray(bytes_io.read()), dtype=np.uint8)
@@ -159,7 +163,7 @@ def process_svoji(image, output_type='np'):
 
                 res, png_bytes = cv2.imencode('.jpg', conv_image, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                 return bytearray(png_bytes)
-            elif output_type == 'svg':
+            elif output_format == 'svg':
                 return d.as_svg().encode('utf-8')
                 #d.save_svg(bytes_io)
                 #bytes_io.seek(0)

@@ -5,13 +5,17 @@ import numpy as np
 from flask import Flask, jsonify, request, Response
 from flask_socketio import SocketIO
 from requests_toolbelt import MultipartEncoder
+import binascii
 
 import proc
 import svoji
 
+#sio = socketio.Server(async_mode='threading')
 app = Flask(__name__)
-#socketio = SocketIO(app, cors_allowed_origins='*')
 #app.config['JWT_SECRET_KEY'] = os.environ.get('ai_jwt_key', 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy')
+app.config['SECRET_KEY'] = 'secret'
+#app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)
+socketio = SocketIO(app, logger=True, engineio_logger=True)
 #####app.config['JWT_SECRET_KEY'] = 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy'  # Change this!
 #jwt = JWTManager(app)
 
@@ -37,26 +41,39 @@ def api_pose_feed():
 """
 
 
+@socketio.on('/api/svoji')
+def event_api_svoji(sid, data):
+    original_image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    conv_image = svoji.process_svoji(original_image, 'svg')
+    return "OK", bytearray(conv_image)
+
+
+@socketio.event
+#def connect(sid, environ, auth):
+def connect(sid):
+    # authenticate the client
+    return True
+
+
+
 @app.route('/api/svoji', methods=['POST'])
 def api_svoji():
     # Check if there is a video stream in the request
     f = request.files.get('image')
     if f is None:
-        return jsonify({'message': 'No frame found in request'}), 400
+        return jsonify({'message': 'No \'image\' found in request'}), 400
 
     original_image = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_UNCHANGED)
     conv_image = svoji.process_svoji(original_image, 'svg')
 
+    # TODO remove
+    #ress = cv2.imwrite('my_file_from_client.jpeg', original_image)
+
     if conv_image is None:
         return jsonify({'message': 'Image recognition failed'}), 422
 
-    m = MultipartEncoder(
-        fields={
-            'image': ('converted', conv_image, 'image/svg'),
-        }
-    )
+    return jsonify({'image': bytearray(original_image).hex(), 'converted': bytearray(conv_image).hex()})
 
-    return Response(m.to_string(), mimetype=m.content_type)
 
 
 @app.route('/api/pose', methods=['POST'])
@@ -113,5 +130,6 @@ def api_pose():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=80)
+    socketio.run(app, host='127.0.0.1', port=80, allow_unsafe_werkzeug=True)
+    #app.run(host='127.0.0.1', port=80)
     #app.run(host='192.168.137.1', port=80)

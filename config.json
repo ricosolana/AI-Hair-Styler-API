@@ -1,0 +1,22 @@
+{
+    "barbershop_dir": "./Barbershop-main/",
+    "input_directory": "./input/",
+    "output_directory": "./output/",
+    "input_template_pattern": "{}.png",
+    "styles": {
+        "help0": "put mappings here, in the form of name:file",
+        "help1": "short-bangs: 312.png",
+        "help1": "cornrows: 191.png",
+        "help1": "braid: 93.png",
+        
+        "bob": "12.png"
+    },
+    "colors": {
+        "help0": "put mappings here, in the form of name:file",
+        "help1": "dark-brown: 422.png",
+        "help1": "dirty-blonde: 43.png",
+        
+        "caramel": "43.png",
+        "dark-blonde": "123.png"
+    }
+}

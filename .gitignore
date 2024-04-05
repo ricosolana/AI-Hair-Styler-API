@@ -1,3 +1,4 @@
 *.svg
 *.jpg
 .idea/workspace.xml
+key.pem

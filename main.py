@@ -1,27 +1,42 @@
+import argparse
+import os
+import secrets
+import subprocess
+import uuid
 import json
+
 
 import cv2
 import numpy as np
-from flask import Flask, jsonify, request, Response
-from flask_socketio import SocketIO
-from requests_toolbelt import MultipartEncoder
-import binascii
+from flask import Flask, jsonify, request, abort, send_from_directory
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from werkzeug.utils import secure_filename
 
-import proc
-import svoji
+# openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
 
-#sio = socketio.Server(async_mode='threading')
 app = Flask(__name__)
-#app.config['JWT_SECRET_KEY'] = os.environ.get('ai_jwt_key', 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy')
-app.config['SECRET_KEY'] = 'secret'
-#app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)
-socketio = SocketIO(app, logger=True, engineio_logger=True)
-#####app.config['JWT_SECRET_KEY'] = 'hamburgers-from-krystal-are-very-good-and-delicious-and-fluffy'  # Change this!
-#jwt = JWTManager(app)
 
-"""
+if not app.config.from_file('config.json', load=json.load):
+    print('Failed to load config')
+    exit(1)
+
+os.environ.setdefault('aihairstyler_JWT_SECRET_KEY', secrets.token_urlsafe(32))
+app.config['JWT_SECRET_KEY'] = os.environ['aihairstyler_JWT_SECRET_KEY']
+
+jwt = JWTManager(app)
+
+
+class WorkStatus:
+    def __init__(self, work_id: str, process):
+        self.work_id = work_id
+        self.process = process
+
+
+work_queue = {}
+
+
 # This endpoint is accessible only from localhost
-@app.route('/generate-token', methods=['GET'])
+@app.route('/token', methods=['GET'])
 def generate_token():
     if request.remote_addr != '127.0.0.1':
         abort(403)  # Forbidden
@@ -30,38 +45,110 @@ def generate_token():
     access_token = create_access_token(identity="anonymous")
     print(f'Generated token: {access_token}')
     return jsonify(access_token=access_token)
-"""
-
-"""
-@socketio.on('/api/pose_feed')
-def api_pose_feed():
 
 
-    return Response()
-"""
-
-
-@socketio.on('/api/svoji')
-def event_api_svoji(sid, data):
-    original_image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
-    conv_image = svoji.process_svoji(original_image, 'svg')
-    return "OK", bytearray(conv_image)
-
-
-@socketio.event
-#def connect(sid, environ, auth):
-def connect(sid):
-    # authenticate the client
-    return True
-
-
-
-@app.route('/api/svoji', methods=['POST'])
-def api_svoji():
+# this api is protected
+@app.route('/api/barber', methods=['POST'])
+#@jwt_required()
+def api_barber():
     # Check if there is a video stream in the request
     f = request.files.get('image')
     if f is None:
-        return jsonify({'message': 'No \'image\' found in request'}), 400
+        return jsonify({'message': 'No \'image\' file found in request files'}), 400
+
+    style = request.args.get('style')
+    if style is None:
+        return jsonify({'message': 'Parameter \'style\' is missing'}), 400
+
+    color = request.args.get('color')
+    if color is None:
+        return jsonify({'message': 'Parameter \'color\' is missing'}), 400
+
+    style_file_name = app.config['styles'].get(style, None)
+    if style_file_name is None:
+        return jsonify({'message': f'Hairstyle \'{style}\' is invalid'}), 400
+
+    color_file_name = app.config['colors'].get(color, None)
+    if color_file_name is None:
+        return jsonify({'message': f'Hair color \'{color}\' is invalid'}), 400
+
+    style_file_name = app.config['input_template_pattern'].format(style_file_name)
+    color_file_name = app.config['input_template_pattern'].format(color_file_name)
+
+    work_id = secrets.token_urlsafe(16)
+
+    ext = os.path.splitext(f.filename)[-1].lower()
+    if ext not in ('.png', '.jpg', '.jpeg'):
+        return jsonify({'message': f'Image extension \'{ext}\' is invalid'})
+
+    input_file_name = work_id + ext
+    f.save(os.path.join(app.config['input_directory'], input_file_name))
+
+    process = subprocess.Popen([
+        "python", "barber.py",
+        '--input_dir', app.config['input_directory'],
+        "--im_path1", input_file_name,  # face
+        "--im_path2", style_file_name + app.config[''],  # style
+        "--im_path3", color_file_name,  # color
+        "--sign", "realistic",
+        "--smooth", "5",
+        "--output_dir", os.path.join(app.config['output_directory'], work_id)
+    ])
+
+    work_queue[work_id] = WorkStatus(work_id, process)
+
+    output_file_name = (f'{os.path.splitext(os.path.basename(input_file_name))[0]}_'
+                        f'{style}_{color}_realistic.png')
+
+    return jsonify({
+        'message': 'Image is now processing',
+        'work_id': work_id,
+        'name': output_file_name
+    })
+
+
+@app.route('/generated/<path:path>')
+@jwt_required()
+def serve_outputs(path):
+    work_id = request.args.get('work_id')
+    if work_id is None:
+        return jsonify({'message': 'Parameter \'work_id\' is missing'})
+
+    # prevent directory traversal
+    work_id = secure_filename(work_id)
+    root = os.path.join(app.config['output_directory'], work_id)
+
+    return send_from_directory(root, path)
+
+
+"""
+#/api/poll
+@app.route('/api/barber/poll', methods=['GET'])
+@jwt_required()
+def api_barber_poll():
+    work_id = request.args.get('work_id', None)
+    if work_id is None:
+        return jsonify({'message': 'Parameter \'work_id\' is missing'}), 400
+
+    # TODO use static directory serving to get image
+    #   require that images are authorized / limited to the specified user?
+
+
+
+    # save the input image first to disk
+    f.save(os.path.join(tmp_input_dir, f.name))
+
+    process = subprocess.Popen([
+        "python", "barber.py",
+        "--im_path1", "103.png",  # face
+        "--im_path2", "28.png",  # style
+        "--im_path3", "54.png",  # color
+        "--sign", "realistic",
+        "--smooth", "5",
+        "--output_dir", "my_dir_out"
+    ])
+
+    # process.kill() # incase the user wants to signal an cancel?
 
     original_image = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_UNCHANGED)
     conv_image = svoji.process_svoji(original_image, 'svg')
@@ -73,63 +160,8 @@ def api_svoji():
         return jsonify({'message': 'Image recognition failed'}), 422
 
     return jsonify({'image': bytearray(original_image).hex(), 'converted': bytearray(conv_image).hex()})
+"""
 
-
-
-@app.route('/api/pose', methods=['POST'])
-def api_pose():
-    while True:
-        # Check if there is a video stream in the request
-        if 'frame' not in request.files:
-            return jsonify({'message': 'No frame found in request'}), 400
-
-        f = request.files['frame']
-
-        if f:
-            #image = cv2.imdecode(np.fromstring(f.read(), np.uint8), cv2.IMREAD_UNCHANGED)
-            image = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_UNCHANGED)
-            (json_data, img) = proc.process_frame_pose(image)
-
-            if img is None:
-                return jsonify(json_data)
-
-            m = MultipartEncoder(
-                fields={
-                    'image': ('cropped', img, 'image/jpeg'),
-                    #'data': json.dumps(json_data)
-                    'data': ('data.json', json.dumps(json_data), 'application/json')
-                }
-            )
-
-            return Response(m.to_string(), mimetype=m.content_type)
-
-            """
-            # multipart
-            def generate():
-                yield b'--boundary\r\nContent-Disposition: form-data; name="image"\r\nContent-Type: image/jpeg\r\n\r\n'
-                yield img
-                yield b'\r\n--boundary\r\nContent-Disposition: form-data; name="data"\r\nContent-Type: application/json\r\n\r\n'
-                yield json.dumps(json_data).encode('utf-8')
-                yield b'\r\n--boundary--'
-
-            # Set the response headers
-            headers = {
-                'Content-Type': 'multipart/form-data; boundary=boundary'
-            }
-
-            return Response(generate(), headers=headers)
-            """
-
-
-
-            #return jsonify(data)
-
-            #height = image.shape[0]
-            #width = image.shape[1]
-            #return jsonify({'height': height, 'width': width}), 200
-
-
-if __name__ == '__main__':
-    socketio.run(app, host='127.0.0.1', port=80, allow_unsafe_werkzeug=True)
-    #app.run(host='127.0.0.1', port=80)
-    #app.run(host='192.168.137.1', port=80)
+app.run(host='127.0.0.1', port=80)
+#app.run(host='127.0.0.1', port=443, ssl_context=('cert.pem', 'key.pem'))
+#app.run(host='192.168.137.1', port=80)

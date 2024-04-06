@@ -35,8 +35,8 @@ def test_api_barber():
     file_path = 'test_partial_side.jpg'
 
     query_params = {
-        'style': 'my_style',
-        'color': 'my_color'
+        'style': 'bob',
+        'color': 'dark-blonde'
     }
 
     with open(file_path, 'rb') as f:

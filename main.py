@@ -15,11 +15,15 @@ if not app.config.from_file('config.json', load=json.load):
     print('Failed to load config')
     exit(1)
 
-INPUT_DIRECTORY = app.config['INPUT_DIRECTORY']
-OUTPUT_DIRECTORY = app.config['OUTPUT_DIRECTORY']
+BARBER_MAIN = app.config['BARBER_MAIN']
+BARBER_INPUT_DIRECTORY = app.config['BARBER_INPUT_DIRECTORY']
+SERVING_OUTPUT_DIRECTORY = app.config['SERVING_OUTPUT_DIRECTORY']
 
-os.environ.setdefault('aihairstyler_JWT_SECRET_KEY', secrets.token_urlsafe(32))
-app.config['JWT_SECRET_KEY'] = os.environ['aihairstyler_JWT_SECRET_KEY']
+
+#app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
+#app.config['JWT_COOKIE_SECURE'] = True # cookies over https only
+app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
+
 
 jwt = JWTManager(app)
 
@@ -50,9 +54,32 @@ def api_token():
     return jsonify(access_token=access_token)
 
 
+def run_barber_process(input_dir, im_path1, im_path2, im_path3, sign, output_dir):
+    process = subprocess.Popen([
+        "python", BARBER_MAIN,
+        '--input_dir', input_dir,
+        "--im_path1", im_path1,  # face
+        "--im_path2", im_path2,  # style
+        "--im_path3", im_path3,  # color
+        "--sign", sign,
+        "--smooth", "5",
+        "--output_dir", output_dir  # work_output_directory
+    ])
+
+    im_path1 = os.path.join(input_dir, im_path1)
+    im_path2 = os.path.join(input_dir, im_path2)
+    im_path3 = os.path.join(input_dir, im_path3)
+
+    im_name_1 = os.path.splitext(os.path.basename(im_path1))[0]
+    im_name_2 = os.path.splitext(os.path.basename(im_path2))[0]
+    im_name_3 = os.path.splitext(os.path.basename(im_path3))[0]
+
+    return process, '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, sign)
+
+
 # this api is protected
 @app.route('/api/barber', methods=['POST'])
-#@jwt_required()
+@jwt_required()
 def api_barber():
     # Check if there is a video stream in the request
     f = request.files.get('image')
@@ -75,60 +102,58 @@ def api_barber():
     if color_file_name is None:
         return jsonify({'message': f'Hair color \'{color}\' is invalid'}), 400
 
-    work_id = secrets.token_urlsafe(32)
+    work_id = secrets.token_hex(32)
 
-    ext = secure_filename(os.path.splitext(f.filename)[-1].lower())
+    ext = os.path.splitext(f.filename)[-1].lower()
     if ext not in ('.png', '.jpg', '.jpeg'):
         return jsonify({'message': f'Image extension \'{ext}\' is invalid'})
 
     input_file_name = work_id + ext
-    os.makedirs(INPUT_DIRECTORY)
-    f.save(os.path.join(INPUT_DIRECTORY, input_file_name))
+    os.makedirs(BARBER_INPUT_DIRECTORY)
+    f.save(os.path.join(BARBER_INPUT_DIRECTORY, input_file_name))
 
     # Served image is physically saved to
     #   ./serving_output/90389348723-23904872312/11_12_23_realistic.png
-    work_output_directory = os.path.join(OUTPUT_DIRECTORY, work_id)
-    os.makedirs(work_output_directory)
+    #work_output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
+    os.makedirs(SERVING_OUTPUT_DIRECTORY)
 
-    process = subprocess.Popen([
-        "python", "barber.py",
-        '--input_dir', INPUT_DIRECTORY,
-        "--im_path1", input_file_name,  # face
-        "--im_path2", style_file_name,  # style
-        "--im_path3", color_file_name,  # color
-        "--sign", "realistic",
-        "--smooth", "5",
-        "--output_dir", work_output_directory
-    ])
+    process, output_file_name = run_barber_process(
+        BARBER_INPUT_DIRECTORY,
+        input_file_name, style_file_name, color_file_name,
+        'realistic', SERVING_OUTPUT_DIRECTORY
+    )
 
     work_queue[work_id] = WorkStatus(work_id, process)
 
     # TODO ensure this name matches the outputted file from barbershop
-    output_file_name = (f'{os.path.splitext(os.path.basename(input_file_name))[0]}_'
-                        f'{style}_{color}_realistic.png')
+    #output_file_name = (f'{os.path.splitext(os.path.basename(input_file_name))[0]}_'
+    #                    f'{style}_{color}_realistic.png')
 
     return jsonify({
         'message': 'Image is being processed',
-        'work_id': work_id,
+        #'work_id': work_id,
         'name': output_file_name
     })
 
 
 # Usage:
 # http://localhost:80/generated/21_45_24_realistic.png?work_id=8328723823-23912838232
+# http://localhost:80/generated/832872382323912838232_45_24_realistic.png
 @app.route('/generated/<path:path>')
-@jwt_required()
+#@jwt_required()  # jwt not upmost required for this, filename is equivalent to a token
 def serve_outputs(path):
-    unsafe_work_id: str = request.args.get('work_id')
-    if unsafe_work_id is None:
-        return jsonify({'message': 'Parameter \'work_id\' is missing'})
+    #unsafe_work_id: str = request.args.get('work_id')
+    #if unsafe_work_id is None:
+        #return jsonify({'message': 'Parameter \'work_id\' is missing'})
 
     # Prevents path traversal vulnerability
-    safe_work_id = secure_filename(unsafe_work_id)
+    #safe_work_id = secure_filename(unsafe_work_id)
 
-    work_directory = os.path.join(OUTPUT_DIRECTORY, safe_work_id)
+    #work_directory = os.path.join(OUTPUT_DIRECTORY, safe_work_id)
 
-    return send_from_directory(work_directory, path)
+    #return send_from_directory(work_directory, path)
+
+    return send_from_directory(SERVING_OUTPUT_DIRECTORY, path)
 
 
 #@app.route('/api/barber/status', methods=['GET'])

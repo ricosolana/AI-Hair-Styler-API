@@ -2,12 +2,17 @@ import json
 import os
 import secrets
 import subprocess
+import queue
+import threading
+import time
 
 from flask import Flask, jsonify, request, abort, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
 
+# hmm idk
 # openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
+
 
 app = Flask(__name__)
 
@@ -20,20 +25,29 @@ BARBER_INPUT_DIRECTORY = app.config['BARBER_INPUT_DIRECTORY']
 SERVING_OUTPUT_DIRECTORY = app.config['SERVING_OUTPUT_DIRECTORY']
 
 
-#app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
-#app.config['JWT_COOKIE_SECURE'] = True # cookies over https only
+app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
+#app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
 app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
-
-
 jwt = JWTManager(app)
 
-work_queue = {}
+# thread-safe
+task_queue = queue.LifoQueue()
 
 
-class WorkStatus:
-    def __init__(self, work_id: str, process: subprocess.Popen):
-        self.work_id = work_id
-        self.process = process
+def worker():
+    while True:
+        # blocks until item available, pops it
+        task = task_queue.get()
+        # I must insert the None
+        if task is None:
+            break
+
+        subprocess.run(task)
+        task_queue.task_done()
+
+
+worker_thread = threading.Thread(target=worker)
+worker_thread.start()
 
 
 # This endpoint is accessible only from localhost
@@ -55,7 +69,7 @@ def api_token():
 
 
 def run_barber_process(input_dir, im_path1, im_path2, im_path3, sign, output_dir):
-    process = subprocess.Popen([
+    task_queue.put([
         "python", BARBER_MAIN,
         '--input_dir', input_dir,
         "--im_path1", im_path1,  # face
@@ -74,7 +88,7 @@ def run_barber_process(input_dir, im_path1, im_path2, im_path3, sign, output_dir
     im_name_2 = os.path.splitext(os.path.basename(im_path2))[0]
     im_name_3 = os.path.splitext(os.path.basename(im_path3))[0]
 
-    return process, '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, sign)
+    return '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, sign)
 
 
 # this api is protected
@@ -109,29 +123,22 @@ def api_barber():
         return jsonify({'message': f'Image extension \'{ext}\' is invalid'})
 
     input_file_name = work_id + ext
-    os.makedirs(BARBER_INPUT_DIRECTORY)
+    os.makedirs(BARBER_INPUT_DIRECTORY, exist_ok=True)
     f.save(os.path.join(BARBER_INPUT_DIRECTORY, input_file_name))
 
     # Served image is physically saved to
     #   ./serving_output/90389348723-23904872312/11_12_23_realistic.png
     #work_output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
-    os.makedirs(SERVING_OUTPUT_DIRECTORY)
+    os.makedirs(SERVING_OUTPUT_DIRECTORY, exist_ok=True)
 
-    process, output_file_name = run_barber_process(
+    output_file_name = run_barber_process(
         BARBER_INPUT_DIRECTORY,
         input_file_name, style_file_name, color_file_name,
         'realistic', SERVING_OUTPUT_DIRECTORY
     )
 
-    work_queue[work_id] = WorkStatus(work_id, process)
-
-    # TODO ensure this name matches the outputted file from barbershop
-    #output_file_name = (f'{os.path.splitext(os.path.basename(input_file_name))[0]}_'
-    #                    f'{style}_{color}_realistic.png')
-
     return jsonify({
-        'message': 'Image is being processed',
-        #'work_id': work_id,
+        'message': 'Task is enqueued',
         'name': output_file_name
     })
 
@@ -163,9 +170,9 @@ def api_barber_status():
     if work_id is None:
         return jsonify({'message': 'Parameter \'work_id\' is missing'}), 400
 
-    work: WorkStatus = work_queue.get(work_id)
-    if work is None:
-        return jsonify({'message': 'work_id is invalid'}), 400
+    #work: BarberTask = work_queue.get(work_id)
+    #if work is None:
+#        return jsonify({'message': 'work_id is invalid'}), 400
 
     # TODO return process status
 
@@ -174,4 +181,7 @@ def api_barber_status():
 app.run(host='127.0.0.1', port=443, ssl_context=('cert.pem', 'key.pem'))
 #app.run(host='192.168.137.1', port=80)
 
-#app.run(port=443, ssl_context=('cert.pem', 'key.pem'))
+#app.run(host='0.0.0.0', port=443, ssl_context=('cert.pem', 'key.pem'))
+task_queue.join()
+task_queue.put(None)  # signal exit
+worker_thread.join()

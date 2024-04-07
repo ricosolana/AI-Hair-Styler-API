@@ -2,3 +2,10 @@
 *.jpg
 .idea/workspace.xml
 key.pem
+certs/ca-key.pem
+certs/server-key.pem
+serving_output/
+certs1/server-key.pem
+certs1/ca-key.pem
+certs/server-req.pem
+certs1/server-req.pem

@@ -57,7 +57,7 @@ def index_path():
 
 
 # This endpoint is accessible only from localhost
-@app.route('/api/token', methods=['GET'])
+@app.route('/auth/token', methods=['GET'])
 def api_token():
     if request.remote_addr != '127.0.0.1':
         abort(403)  # Forbidden
@@ -178,10 +178,10 @@ def api_barber_status():
 
 
 #app.run(host='127.0.0.1', port=80)
-app.run(host='127.0.0.1', port=443, ssl_context=('cert.pem', 'key.pem'))
+#app.run(host='127.0.0.1', port=443, ssl_context=('certs/server-cert.pem', 'certs/server-key.pem'))
 #app.run(host='192.168.137.1', port=80)
 
-#app.run(host='0.0.0.0', port=443, ssl_context=('cert.pem', 'key.pem'))
+app.run(host='0.0.0.0', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
 task_queue.join()
 task_queue.put(None)  # signal exit
 worker_thread.join()

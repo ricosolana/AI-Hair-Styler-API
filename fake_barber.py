@@ -17,7 +17,7 @@ def save_samples(args):
                                      '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, args.sign))
 
     # fake image to show we did some "processing"
-    image = cv2.imread(im_path1)
+    image = cv2.imread(os.path.abspath(im_path1))
     inverted_image = ~image
 
     cv2.imwrite(output_image_path, inverted_image)

@@ -33,7 +33,7 @@ def test_api_barber(img_file):
     #os.environ["REQUESTS_CA_BUNDLE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
     #os.environ["SSL_CERT_FILE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
 
-    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjUzOTk5NCwianRpIjoiODg4NDNkYzYtOTk4MS00MzQ5LTkxZmUtZDU3YWNhMDE5MjQ4IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjUzOTk5NCwiY3NyZiI6ImQwNTExZTEyLTRhYWItNDk2OS1iZmI0LTQyYzA1NzI1YzcyOSIsImV4cCI6MTcxMjU0MDg5NH0.LTJg0RrCoBXtq4KEpZPeBtG8AIDkibDpSM4m7Z3g8mU'
+    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjY5MTE5MCwianRpIjoiODAyYmE3YWUtY2YwYi00NjBhLThhNDItNDdlNWY1Y2JlYmU5IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjY5MTE5MCwiY3NyZiI6IjU4YTM5ZjYxLWUwM2QtNDczYS04NjlmLTFhNjk1MTEwOTYzMyIsImV4cCI6MTcxMjY5MjA5MH0.Do6nIFXL2AVkBjZXnJ4-fev-c4ypQ4kjjx7ZcGkVbU4'
     url = 'http://localhost/api/barber'
 
     headers = {
@@ -41,8 +41,8 @@ def test_api_barber(img_file):
     }
 
     query_params = {
-        'style': 'bob',
-        'color': 'dark-blonde'
+        'style-file': '1.png',
+        'color-file': '2.png'
     }
 
     files = {'image': img_file}
@@ -53,7 +53,7 @@ def test_api_barber(img_file):
                              params=query_params,
                              #verify='C:\\Users\\rico\\Downloads\\O=periodicseizures,L=Tampa,ST=Florida,C=US.crt'
                              #verify='C:\\Users\\rico\\Downloads\\aihairstyler.crt'
-                             verify=False
+                             #verify=False
                              )
 
     if response.status_code == 422:

@@ -3,8 +3,10 @@ import os
 import secrets
 import subprocess
 import queue
+import sys
 import threading
-import time
+import cv2
+import numpy as np
 
 from flask import Flask, jsonify, request, abort, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
@@ -24,8 +26,11 @@ BARBER_MAIN = app.config['BARBER_MAIN']
 FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
 BARBER_FACES_INPUT_DIRECTORY = app.config['BARBER_FACES_INPUT_DIRECTORY']
 SERVING_PROCESSED_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
-SERVING_STYLE_INPUT_DIRECTORY = app.config['SERVING_STYLE_INPUT_DIRECTORY']
-SERVING_COLOR_INPUT_DIRECTORY = app.config['SERVING_COLOR_INPUT_DIRECTORY']
+SERVING_TEMPLATE_INPUT_DIRECTORY = app.config['SERVING_TEMPLATE_INPUT_DIRECTORY']
+#SERVING_STYLE_INPUT_DIRECTORY = app.config['SERVING_STYLE_INPUT_DIRECTORY']
+#SERVING_COLOR_INPUT_DIRECTORY = app.config['SERVING_COLOR_INPUT_DIRECTORY']
+
+#rel_template_input_directory = os.path.relpath(path=os.path.abspath(BARBER_FACES_INPUT_DIRECTORY))
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 #app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -44,7 +49,7 @@ def worker():
         if task is None:
             break
 
-        subprocess.run(task)
+        subprocess.run(task, env=os.environ)
         task_queue.task_done()
 
 
@@ -58,7 +63,7 @@ def index_path():
     return jsonify({'name': 'ai hair styler generator api',
                     #'message': '/auth/token, /api/barber, /generated/708dd2bab3b011676bb80d640f363838c5754f8000cc67b9503072fc6b1e96f9_12_123_realistic.png',
                     'task-queue': task_queue.qsize(),
-                    'version': 'v1.0.0'
+                    'version': 'v1.1.0'
                     })
 
 
@@ -76,7 +81,8 @@ def api_token():
 
 def run_barber_process(_barber_main, input_dir, im_path1, im_path2, im_path3, sign, output_dir):
     task_queue.put([
-        "python", _barber_main, #BARBER_MAIN,
+        #"python", _barber_main, #BARBER_MAIN,
+        sys.executable, _barber_main,
         '--input_dir', input_dir,
         "--im_path1", im_path1,  # face
         "--im_path2", im_path2,  # style
@@ -106,21 +112,13 @@ def api_barber():
     if f is None:
         return jsonify({'message': 'No \'image\' file found in request files'}), 400
 
-    style = request.args.get('style')
-    if style is None:
-        return jsonify({'message': 'Parameter \'style\' is missing'}), 400
-
-    color = request.args.get('color')
-    if color is None:
-        return jsonify({'message': 'Parameter \'color\' is missing'}), 400
-
-    style_file_name = app.config['STYLES'].get(style)
+    style_file_name = secure_filename(request.args.get('style-file'))
     if style_file_name is None:
-        return jsonify({'message': f'Hairstyle \'{style}\' is invalid'}), 400
+        return jsonify({'message': 'Parameter \'style-file\' is missing'}), 400
 
-    color_file_name = app.config['COLORS'].get(color)
+    color_file_name = secure_filename(request.args.get('color-file'))
     if color_file_name is None:
-        return jsonify({'message': f'Hair color \'{color}\' is invalid'}), 400
+        return jsonify({'message': 'Parameter \'color-file\' is missing'}), 400
 
     work_id = secrets.token_hex(32)
 
@@ -128,19 +126,54 @@ def api_barber():
     if ext not in ('.png', '.jpg', '.jpeg'):
         return jsonify({'message': f'Image extension \'{ext}\' is invalid'})
 
-    input_file_name = work_id + ext
+    #rel_input_face_file = work_id + ext
+
+    # Read the image file into a numpy array
+    # Decode the image using OpenCV
+    cv_image = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+    if cv_image is None:
+        return jsonify({'message': 'Image parsing failed'}), 400
+
+    #cv_image = cv2.imread(os.path.abspath(im_path1))
+
+    face_file_input_name = work_id + ext
     os.makedirs(BARBER_FACES_INPUT_DIRECTORY, exist_ok=True)
-    f.save(os.path.join(BARBER_FACES_INPUT_DIRECTORY, input_file_name))
+    f.stream.seek(0)
+    f.save(os.path.join(BARBER_FACES_INPUT_DIRECTORY, face_file_input_name))
+    #cv2.imwrite(os.path.join(BARBER_FACES_INPUT_DIRECTORY, face_file_input_name), cv_image)
 
     # Served image is physically saved to
     #   ./serving_output/90389348723-23904872312/11_12_23_realistic.png
     #work_output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
     os.makedirs(SERVING_PROCESSED_OUTPUT_DIRECTORY, exist_ok=True)
 
+    # color_file_name
+    # os.path.join(SERVING_STYLE_INPUT_DIRECTORY, style_file_name)
+
+    # the face/style/color images are normally in the same directory
+    # we want to separate faces/style/color from each other, into different directories,
+    # so use relative paths
+
+    # determine the relative path for:
+    #   input/face/43.png
+    abs_input_directory = os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY)
+    rel_face_input_directory = os.path.relpath(os.path.abspath(BARBER_FACES_INPUT_DIRECTORY), abs_input_directory)
+    rel_template_input_directory = os.path.relpath(os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY),
+                                                   abs_input_directory)
+
+    rel_face_file = os.path.join(rel_face_input_directory, face_file_input_name)
+    rel_style_file = os.path.join(rel_template_input_directory, style_file_name)
+    rel_color_file = os.path.join(rel_template_input_directory, color_file_name)
+
+    # the style/color path are relative to the
+    # BARBER_FACES_INPUT_DIRECTORY
+
     output_file_name = run_barber_process(
-        FAKE_BARBER_MAIN if 'demo' in request.args else BARBER_MAIN,
-        BARBER_FACES_INPUT_DIRECTORY,
-        input_file_name, style_file_name, color_file_name,
+        FAKE_BARBER_MAIN if request.args.get('demo', '0') == '1' else BARBER_MAIN,
+        abs_input_directory,
+        rel_face_file,
+        rel_style_file,
+        rel_color_file,
         'realistic', SERVING_PROCESSED_OUTPUT_DIRECTORY
     )
 
@@ -155,7 +188,7 @@ def api_barber():
 # http://localhost:80/generated/832872382323912838232_45_24_realistic.png
 @app.route('/generated/<path:path>')
 #@jwt_required()  # jwt not upmost required for this, filename is equivalent to a token
-def serve_outputs(path):
+def serve_generated(path):
     #unsafe_work_id: str = request.args.get('work_id')
     #if unsafe_work_id is None:
         #return jsonify({'message': 'Parameter \'work_id\' is missing'})
@@ -168,6 +201,24 @@ def serve_outputs(path):
     #return send_from_directory(work_directory, path)
 
     return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
+
+
+@app.route('/api/templates/styles')
+#@jwt_required()
+def api_templates_styles():
+    return jsonify(app.config['STYLES'])
+
+
+@app.route('/api/templates/colors')
+#@jwt_required()
+def api_templates_colors():
+    return jsonify(app.config['COLORS'])
+
+
+@app.route('/templates/<path:path>')
+#@jwt_required()
+def serve_templates(path):
+    return send_from_directory(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
 
 
 #@app.route('/api/barber/status', methods=['GET'])

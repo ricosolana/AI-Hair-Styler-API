@@ -203,19 +203,19 @@ def serve_generated(path):
     return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
 
 
-@app.route('/api/templates/styles')
+@app.route('/api/templates/styles', methods=['GET'])
 #@jwt_required()
 def api_templates_styles():
     return jsonify(app.config['STYLES'])
 
 
-@app.route('/api/templates/colors')
+@app.route('/api/templates/colors', methods=['GET'])
 #@jwt_required()
 def api_templates_colors():
     return jsonify(app.config['COLORS'])
 
 
-@app.route('/templates/<path:path>')
+@app.route('/templates/<path:path>', methods=['GET'])
 #@jwt_required()
 def serve_templates(path):
     return send_from_directory(SERVING_TEMPLATE_INPUT_DIRECTORY, path)

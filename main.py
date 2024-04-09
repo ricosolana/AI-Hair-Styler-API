@@ -22,8 +22,10 @@ if not app.config.from_file('config.json', load=json.load):
 
 BARBER_MAIN = app.config['BARBER_MAIN']
 FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
-BARBER_INPUT_DIRECTORY = app.config['BARBER_INPUT_DIRECTORY']
-SERVING_OUTPUT_DIRECTORY = app.config['SERVING_OUTPUT_DIRECTORY']
+BARBER_FACES_INPUT_DIRECTORY = app.config['BARBER_FACES_INPUT_DIRECTORY']
+SERVING_PROCESSED_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
+SERVING_STYLE_INPUT_DIRECTORY = app.config['SERVING_STYLE_INPUT_DIRECTORY']
+SERVING_COLOR_INPUT_DIRECTORY = app.config['SERVING_COLOR_INPUT_DIRECTORY']
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 #app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -127,19 +129,19 @@ def api_barber():
         return jsonify({'message': f'Image extension \'{ext}\' is invalid'})
 
     input_file_name = work_id + ext
-    os.makedirs(BARBER_INPUT_DIRECTORY, exist_ok=True)
-    f.save(os.path.join(BARBER_INPUT_DIRECTORY, input_file_name))
+    os.makedirs(BARBER_FACES_INPUT_DIRECTORY, exist_ok=True)
+    f.save(os.path.join(BARBER_FACES_INPUT_DIRECTORY, input_file_name))
 
     # Served image is physically saved to
     #   ./serving_output/90389348723-23904872312/11_12_23_realistic.png
     #work_output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
-    os.makedirs(SERVING_OUTPUT_DIRECTORY, exist_ok=True)
+    os.makedirs(SERVING_PROCESSED_OUTPUT_DIRECTORY, exist_ok=True)
 
     output_file_name = run_barber_process(
         FAKE_BARBER_MAIN if 'demo' in request.args else BARBER_MAIN,
-        BARBER_INPUT_DIRECTORY,
+        BARBER_FACES_INPUT_DIRECTORY,
         input_file_name, style_file_name, color_file_name,
-        'realistic', SERVING_OUTPUT_DIRECTORY
+        'realistic', SERVING_PROCESSED_OUTPUT_DIRECTORY
     )
 
     return jsonify({
@@ -165,7 +167,7 @@ def serve_outputs(path):
 
     #return send_from_directory(work_directory, path)
 
-    return send_from_directory(SERVING_OUTPUT_DIRECTORY, path)
+    return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
 
 
 #@app.route('/api/barber/status', methods=['GET'])

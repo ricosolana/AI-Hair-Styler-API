@@ -5,7 +5,107 @@
     "SERVING_PROCESSED_OUTPUT_DIRECTORY": "./serving_processed_output/",
     "SERVING_TEMPLATE_INPUT_DIRECTORY": "./serving_template_input/",
     
+    "HELP_398frvfuywe": "if a hairstyle or hair color fits into more than category, put it into more than 1 category",
     "STYLES": {
+        "fringe": {
+            "description": "Short mens hairstyle loosely covering the forehead resembling bangs",
+            "matching" [
+                "list every pic here one-by-one (remove me)",
+                
+                "0.png",
+                "100.png",
+                
+            ]
+        },
+        "short": {
+            "description": "",
+            "matching": [
+                "0.png",
+                "1.png"
+            ]
+        },        
+        "parted": {
+            "description": "",
+            "matching": [
+                "2.png",
+                "3.png",
+                "4.png",
+                "11.png",
+                "12.png",
+                "15.png",
+                "26.png",
+                "27.png",
+                "28.png",
+                ""
+            ]
+        },
+        "bob": {
+            "matching": [
+                "20.png",
+            ]
+        }
+        "lob": {
+            "matching": [
+                "12.png",
+                "14.png",
+                ""
+            ]
+        }
+        "dreads": {
+            "description": "",
+            "matching": [
+                
+            ]
+        }
+        "fade": {
+            "description: "",
+            "matching": [
+                "8.png",
+                "10.png"
+            ]
+        },
+        "crew": {
+            "description": "",
+            "matching": [
+                
+            ]
+        },
+        "short": {
+            "description": "",
+            "matching": [
+                
+            ]
+        },
+        "wavy": {
+            "description": "",
+            "matching": [
+                "12.png",
+                "16.png",
+                ""
+            ]
+        },
+        "curly": {
+            "description": "",
+            "matching": [
+                "5.png",
+                "7.png",
+                "9.png",
+                "34.png",
+                ""
+            ]
+        },
+        "bangs": {
+            "description": "",
+            "matching": [
+                "16.png",
+                ""
+            ]
+        },
+        
+        
+        
+        
+        
         "m-short-1": "0.png",
         "f-short-1": "1.png",
         "f-parted-1": "",
@@ -125,7 +225,7 @@
         "m-short": "",
         "f-": "117.png",
         "f-parted": "",
-        "f-parted": "119.png",
+        "f-parted": "119.png"
     },
     "COLORS": {
         "help0": "put mappings here, in the form of name:file",

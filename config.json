@@ -5,25 +5,56 @@
     "SERVING_PROCESSED_OUTPUT_DIRECTORY": "./serving_processed_output/",
     "SERVING_TEMPLATE_INPUT_DIRECTORY": "./serving_template_input/",
     
+    
     "HELP_398frvfuywe": "if a hairstyle or hair color fits into more than category, put it into more than 1 category",
     "STYLES": {
         "fringe": {
             "description": "Short mens hairstyle loosely covering the forehead resembling bangs",
-            "matching" [
-                "list every pic here one-by-one (remove me)",
-                
+            "matching": [
                 "0.png",
-                "100.png",
-                
+                "100.png"
             ]
         },
         "short": {
             "description": "",
             "matching": [
                 "0.png",
-                "1.png"
+                "1.png",
+                "8.png",
+                "10.png",
+                "23.png",
+                "41.png",
+                "42.png",
+                "43.png",
+                "47.png",
+                "49.png",
+                "51.png",
+                "60.png"
             ]
-        },        
+        },
+        "medium": {
+            "description": "",
+            "matching": [
+                "1.png",
+                "17.png",
+                "32.png",
+                "33.png",
+                "41.png",
+                "42.png",
+                "48.png",
+                "49.png"
+            ]
+        },
+        "tall": {
+            "description": "",
+            "matching": [
+                "19.png",
+                "32.png",
+                "33.png",
+                "39.png",
+                "66.png"
+            ]
+        },
         "parted": {
             "description": "",
             "matching": [
@@ -36,29 +67,60 @@
                 "26.png",
                 "27.png",
                 "28.png",
-                ""
+                "29.png",
+                "36.png",
+                "53.png",
+                "56.png",
+                "58.png",
+                "61.png",
+                "62.png",
+                "64.png",
+                "73.png",
+                "74.png",
+                "77.png",
+                "81.png",
+                "82.png",
+                "83.png",
+                "84.png",
+                "89.png",
+                "93.png",
+                "94.png",
+                "95.png",
+                "104.png",
+                "109.png",
+                "111.png",
+                "112.png",
+                "113.png",
+                "115.png",
+                "118.png"
             ]
         },
         "bob": {
             "matching": [
-                "20.png",
+                "20.png"
             ]
-        }
+        },
         "lob": {
             "matching": [
                 "12.png",
-                "14.png",
-                ""
+                "14.png"
             ]
-        }
+        },
+        "frizzy": {
+            "description": "",
+            "matching": [
+                "72.png",
+                "85.png"
+            ]
+        },
         "dreads": {
             "description": "",
             "matching": [
-                
+                "23.png"
             ]
-        }
+        },
         "fade": {
-            "description: "",
+            "description": "",
             "matching": [
                 "8.png",
                 "10.png"
@@ -66,22 +128,16 @@
         },
         "crew": {
             "description": "",
-            "matching": [
-                
-            ]
-        },
-        "short": {
-            "description": "",
-            "matching": [
-                
-            ]
+            "matching": []
         },
         "wavy": {
             "description": "",
             "matching": [
                 "12.png",
                 "16.png",
-                ""
+                "40.png",
+                "57.png",
+                "59.png"
             ]
         },
         "curly": {
@@ -91,148 +147,116 @@
                 "7.png",
                 "9.png",
                 "34.png",
-                ""
+                "79.png",
+                "91.png"
             ]
         },
         "bangs": {
             "description": "",
             "matching": [
                 "16.png",
+                "59.png",
+                "96.png"
+            ]
+        },
+        "pigtails": {
+            "description": "",
+            "matching": [
+                "96.png"
+            ]
+        },
+        "bald": {
+            "description": "",
+            "matching": [
+                "63.png"
+            ]
+        }
+    },
+    "COLORS": {
+        "black": {
+            "description": "",
+            "matching": [
+                "0.png",
+                "1.png",
+                "4.png",
+                "6.png",
+                "8.png",
+                "9.png",
+                "10.png",
+                "28.png",
+                "29.png"
+            ]
+        },
+        "dark": {
+            "description": "",
+            "matching": [
+                "4.png",
+                "6.png",
+                "8.png",
+                "10.png",
+                "12.png",
+                "13.png",
+                "14.png",
+                "21.png",
+                "23.png",
+                "24.png",
+                "32.png"
+            ]
+        },
+        "dirty-blonde": {
+            "description": "",
+            "matching": [
+                "26.png",
+                "36.png"
+            ]
+        },
+        "brown": {
+            "description": "",
+            "matching": [
+                "2.png",
+                "5.png",
+                "7.png",
+                "11.png",
+                "12.png",
+                "13.png",
+                "14.png",
+                "15.png",
+                "16.png",
+                "18.png",
+                "20.png",
+                "27.png",
+                "30.png",
+                "32.png",
+                "36.png"
+            ]
+        },
+        "auburn": {
+            "description": "",
+            "matching": [
+                "20.png",
+                "30.png"
+            ]
+        },
+        "blonde": {
+            "description": "",
+            "matching": [
+                "3.png",
+                "34.png",
+                "35.png"
+            ]
+        },
+        "gold": {
+            "description": "",
+            "matching": [
+                "34.png",
                 ""
             ]
         },
-        
-        
-        
-        
-        
-        "m-short-1": "0.png",
-        "f-short-1": "1.png",
-        "f-parted-1": "",
-        "f-parted-2": "",
-        "f-parted-3": "",
-        "f-curly-1": "",
-        "m-dreads-1": "",
-        "f-curly-2": "",
-        "m-short-2": "",
-        "f-unknown-1": "",
-        "m-short-3": "",
-        "f-parted-4": "",
-        "f-parted-5": "",
-        "f-unknown-2": "13.png",
-        "f-parted-6": "14.png",
-        "f-parted-7": "15.png",
-        "f-bangs-1": "",
-        "f-short-2": "17.png",
-        "f-": "",
-        "m-tall-1": "19.png",
-        "f-parted-": "",
-        "f-parted": "",
-        "f-hidden-1": "",
-        "m-dreads-2": "23.png",
-        "m-tall-2": "",
-        "f-parted-": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-": "30.png",
-        "f-tails-1": "",
-        "m-tall-": "",
-        "m-tall-": "",
-        "f-curly": "",
-        "f-": "35.png",
-        "f-parted-": "",
-        "f-parted": "",
-        "f-parted": "",
-        "m-tall": "",
-        "f-parted": "",
-        "m-short": "41.png",
-        "m-short-": "",
-        "m-short": "",
-        "f-parted": "44.png",
-        "m-short": "",
-        "f-": "46.png",
-        "m-short": "",
-        "f-short": "",
-        "m-short": "49.png",
-        "f-parted": "",
-        "f-short": "",
-        "m-curly": "",
-        "f-parted": "53.png",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-bangs": "",
-        "m-short": "60.png",
-        "f-parted": "",
-        "f-parted": "",
-        "m-bald": "",
-        "f-parted": "",
-        "m-short": "",
-        "m-tall": "66.png",
-        "f-curly": "",
-        "f-parted": "",
-        "m-tall": "",
-        "f-parted": "",
-        "m-curly": "",
-        "f-curly": "",
-        "f-parted": "",
-        "f-parted": "",
-        "m-tall": "75.png",
-        "f-": "",
-        "f-parted": "",
-        "m-tall": "",
-        "f-curly": "",
-        "f-short": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "83.png",
-        "f-": "",
-        "f-frizzy": "",
-        "f-short": "",
-        "m-flat": "",
-        "m-short": "88.png",
-        "f-parted": "",
-        "f-": "",
-        "m-curly": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "94.png",
-        "f-parted": "",
-        "f-bangs": "",
-        "m-hidden": "",
-        "m-short": "98.png",
-        "f-parted": "",
-        "m-short": "",
-        "m-curly": "",
-        "f-short": "102.png",
-        "m-": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-curly": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "109.png",
-        "f-unknown": "",
-        "f-parted": "",
-        "f-parted": "",
-        "f-parted": "",
-        "m-tall": "114.png",
-        "f-parted": "",
-        "m-short": "",
-        "f-": "117.png",
-        "f-parted": "",
-        "f-parted": "119.png"
-    },
-    "COLORS": {
-        "help0": "put mappings here, in the form of name:file",
-        "help1": "dark-brown: 422.png",
-        "help1": "dirty-blonde: 43.png",
-        
-        "caramel": "43.png",
-        "dark-blonde": "123.png"
+        "orange": {
+            "description": "",
+            "matching": [
+                "16.png"
+            ]
+        }
     }
 }

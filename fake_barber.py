@@ -1,5 +1,6 @@
 import argparse
 import os
+import cv2
 
 
 def save_samples(args):
@@ -15,8 +16,14 @@ def save_samples(args):
     output_image_path = os.path.join(args.output_dir,
                                      '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, args.sign))
 
-    with open(output_image_path, 'w') as out_img:
-        out_img.write('this is an image. :)')
+    # fake image to show we did some "processing"
+    image = cv2.imread(im_path1)
+    inverted_image = ~image
+
+    cv2.imwrite(output_image_path, inverted_image)
+
+    #with open(output_image_path, 'w') as out_img:
+        #out_img.write('this is an image. :)')
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 {
-    "BARBER_MAIN": "barber.py",
+    "BARBER_MAIN": "fake_barber.py",
+    "FAKE_BARBER_MAIN": "fake_barber.py",
     "BARBER_INPUT_DIRECTORY": "./barber_input/",
     "SERVING_OUTPUT_DIRECTORY": "./serving_output/",
     "STYLES": {

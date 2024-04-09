@@ -21,9 +21,9 @@ if not app.config.from_file('config.json', load=json.load):
     exit(1)
 
 BARBER_MAIN = app.config['BARBER_MAIN']
+FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
 BARBER_INPUT_DIRECTORY = app.config['BARBER_INPUT_DIRECTORY']
 SERVING_OUTPUT_DIRECTORY = app.config['SERVING_OUTPUT_DIRECTORY']
-
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 #app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -53,7 +53,11 @@ worker_thread.start()
 # This endpoint is accessible only from localhost
 @app.route('/', methods=['GET'])
 def index_path():
-    return jsonify({'message': '/api/token, /api/barber, /generated/21_45_24_realistic.png?work_id=8328723823-23912838232'})
+    return jsonify({'name': 'ai hair styler generator api',
+                    #'message': '/auth/token, /api/barber, /generated/708dd2bab3b011676bb80d640f363838c5754f8000cc67b9503072fc6b1e96f9_12_123_realistic.png',
+                    'task-queue': task_queue.qsize(),
+                    'version': 'v1.0.0'
+                    })
 
 
 # This endpoint is accessible only from localhost
@@ -68,9 +72,9 @@ def api_token():
     return jsonify(access_token=access_token)
 
 
-def run_barber_process(input_dir, im_path1, im_path2, im_path3, sign, output_dir):
+def run_barber_process(_barber_main, input_dir, im_path1, im_path2, im_path3, sign, output_dir):
     task_queue.put([
-        "python", BARBER_MAIN,
+        "python", _barber_main, #BARBER_MAIN,
         '--input_dir', input_dir,
         "--im_path1", im_path1,  # face
         "--im_path2", im_path2,  # style
@@ -132,6 +136,7 @@ def api_barber():
     os.makedirs(SERVING_OUTPUT_DIRECTORY, exist_ok=True)
 
     output_file_name = run_barber_process(
+        FAKE_BARBER_MAIN if 'demo' in request.args else BARBER_MAIN,
         BARBER_INPUT_DIRECTORY,
         input_file_name, style_file_name, color_file_name,
         'realistic', SERVING_OUTPUT_DIRECTORY
@@ -177,11 +182,11 @@ def api_barber_status():
     # TODO return process status
 
 
-#app.run(host='127.0.0.1', port=80)
-#app.run(host='127.0.0.1', port=443, ssl_context=('certs/server-cert.pem', 'certs/server-key.pem'))
+app.run(host='127.0.0.1', port=80)
+#app.run(host='127.0.0.1', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
 #app.run(host='192.168.137.1', port=80)
 
-app.run(host='0.0.0.0', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
+#app.run(host='0.0.0.0', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
 task_queue.join()
 task_queue.put(None)  # signal exit
 worker_thread.join()

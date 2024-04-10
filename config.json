@@ -1,12 +1,12 @@
 {
     "BARBER_MAIN": "fake_barber.py",
+    "BARBER_ALIGN": "align.py",
     "FAKE_BARBER_MAIN": "fake_barber.py",
+    "BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY": "./barber_faces_unprocessed_input/",
     "BARBER_FACES_INPUT_DIRECTORY": "./barber_faces_input/",
     "SERVING_PROCESSED_OUTPUT_DIRECTORY": "./serving_processed_output/",
     "SERVING_TEMPLATE_INPUT_DIRECTORY": "C:/Users/rico/Documents/BarbershopAI-Fork-3-main/Barbershop-main-20240402T181303Z-001/Barbershop-main/input/face",
     
-    
-    "HELP_398frvfuywe": "if a hairstyle or hair color fits into more than category, put it into more than 1 category",
     "STYLES": {
         "fringe": {
             "description": "Short mens hairstyle loosely covering the forehead resembling bangs",

@@ -11,7 +11,7 @@ import werkzeug.security
 
 from flask import Flask, jsonify, request, abort, send_from_directory, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename, safe_join
 
 # hmm idk
 # openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
@@ -24,13 +24,23 @@ if not app.config.from_file('config.json', load=json.load):
     exit(1)
 
 BARBER_MAIN = app.config['BARBER_MAIN']
+BARBER_ALIGN = app.config['BARBER_ALIGN']
 FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
+BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY = app.config['BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY']
 BARBER_FACES_INPUT_DIRECTORY = app.config['BARBER_FACES_INPUT_DIRECTORY']
-SERVING_PROCESSED_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
+SERVING_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
 SERVING_TEMPLATE_INPUT_DIRECTORY = app.config['SERVING_TEMPLATE_INPUT_DIRECTORY']
 
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
+
+
+
+# TMP DELETE ME!!! (test only)
+#abs_input_directory = os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY)
+#rel_face_input_directory = os.path.relpath(os.path.abspath(BARBER_FACES_INPUT_DIRECTORY), abs_input_directory)
+#rel_template_input_directory = os.path.relpath(os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY),
+#                                               abs_input_directory)
 
 
 
@@ -67,7 +77,7 @@ def index_path():
     return jsonify({'name': 'ai hair styler generator api',
                     #'message': '/auth/token, /api/barber, /generated/708dd2bab3b011676bb80d640f363838c5754f8000cc67b9503072fc6b1e96f9_12_123_realistic.png',
                     'task-queue': task_queue.qsize(),
-                    'version': 'v1.1.0'
+                    'version': 'v1.2.0'
                     })
 
 
@@ -96,6 +106,7 @@ def run_barber_process(_barber_main, input_dir, im_path1, im_path2, im_path3, si
         "--output_dir", output_dir  # work_output_directory
     ])
 
+    """
     im_path1 = os.path.join(input_dir, im_path1)
     im_path2 = os.path.join(input_dir, im_path2)
     im_path3 = os.path.join(input_dir, im_path3)
@@ -105,6 +116,21 @@ def run_barber_process(_barber_main, input_dir, im_path1, im_path2, im_path3, si
     im_name_3 = os.path.splitext(os.path.basename(im_path3))[0]
 
     return '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, sign)
+    """
+
+
+"""
+def run_align_process(_align, unprocessed_input_dir, output_dir):
+    task_queue.put([
+        #"python", _barber_main, #BARBER_MAIN,
+        sys.executable, _align,
+        '-unprocessed_dir', unprocessed_input_dir,
+        "-output_dir", output_dir  # work_output_directory
+    ])
+
+    return '{}_{}_{}_{}.png'.format(im_name_1, im_name_2, im_name_3, sign)
+"""
+
 
 
 # this api is protected
@@ -140,6 +166,8 @@ def api_barber():
 
     #cv_image = cv2.imread(os.path.abspath(im_path1))
 
+    # TODO for align, save image to unprocessed instead
+
     face_file_input_name = work_id + ext
     os.makedirs(BARBER_FACES_INPUT_DIRECTORY, exist_ok=True)
     f.stream.seek(0)
@@ -147,9 +175,9 @@ def api_barber():
     #cv2.imwrite(os.path.join(BARBER_FACES_INPUT_DIRECTORY, face_file_input_name), cv_image)
 
     # Served image is physically saved to
-    #   ./serving_output/90389348723-23904872312/11_12_23_realistic.png
     #work_output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
-    os.makedirs(SERVING_PROCESSED_OUTPUT_DIRECTORY, exist_ok=True)
+    output_directory = os.path.join(SERVING_OUTPUT_DIRECTORY, work_id)
+    os.makedirs(output_directory, exist_ok=True)
 
     # color_file_name
     # os.path.join(SERVING_STYLE_INPUT_DIRECTORY, style_file_name)
@@ -160,10 +188,15 @@ def api_barber():
 
     # determine the relative path for:
     #   input/face/43.png
-    abs_input_directory = os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY)
-    rel_face_input_directory = os.path.relpath(os.path.abspath(BARBER_FACES_INPUT_DIRECTORY), abs_input_directory)
+
+    # input directory is not important
+    #   in fact, adds a level of confusion
+    #   input files are explicitly specified (and required)- so, what's the point?
+    #   lazy shorthand at the cost of readability and simplicity?
+    abs_base_input_directory = os.path.abspath('.')
+    rel_face_input_directory = os.path.relpath(os.path.abspath(BARBER_FACES_INPUT_DIRECTORY), abs_base_input_directory)
     rel_template_input_directory = os.path.relpath(os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY),
-                                                   abs_input_directory)
+                                                   abs_base_input_directory)
 
     rel_face_file = os.path.join(rel_face_input_directory, face_file_input_name)
     rel_style_file = os.path.join(rel_template_input_directory, style_file_name)
@@ -172,24 +205,25 @@ def api_barber():
     # the style/color path are relative to the
     # BARBER_FACES_INPUT_DIRECTORY
 
-    output_file_name = run_barber_process(
+    run_barber_process(
         FAKE_BARBER_MAIN if request.args.get('demo', '0') == '1' else BARBER_MAIN,
-        abs_input_directory,
+        abs_base_input_directory,
         rel_face_file,
         rel_style_file,
         rel_color_file,
-        'realistic', SERVING_PROCESSED_OUTPUT_DIRECTORY
+        'realistic',
+        output_directory
     )
 
     return jsonify({
         'message': 'Task is enqueued',
-        'name': output_file_name
+        #'name': output_file_name
+        'work-id': work_id
     })
 
 
 # Usage:
-# http://localhost:80/generated/21_45_24_realistic.png?work_id=8328723823-23912838232
-# http://localhost:80/generated/832872382323912838232_45_24_realistic.png
+# http://localhost:80/generated/832872382323912838232
 @app.route('/generated/<path:path>')
 #@jwt_required()  # jwt not upmost required for this, filename is equivalent to a token
 def serve_generated(path):
@@ -204,9 +238,19 @@ def serve_generated(path):
 
     #return send_from_directory(work_directory, path)
 
-    return response_compressed(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
+    # return the first file
+
+    safe_path = werkzeug.security.safe_join(SERVING_OUTPUT_DIRECTORY, path)
+
+    #for root, dirs, files in os.walk(os.path.join(SERVING_PROCESSED_OUTPUT_DIRECTORY, path),topdown=False):
+
+    with os.scandir(safe_path) as entries:
+        for entry in entries:
+            if entry.is_file():
+                return response_unsafe_serve_image(entry.path)
 
     #return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
+    return jsonify({'message': 'Image not found'}), 400
 
 
 @app.route('/api/templates/styles', methods=['GET'])
@@ -228,10 +272,12 @@ def api_templates_colors():
     return jsonify(app.config['COLORS'])
 
 
-def response_compressed(directory, path):
-    path = secure_filename(path)
-    # werkzeug.security.safe_join()
-    image = cv2.imread(os.path.join(directory, path))
+def response_safe_serve_image(directory, unsafe_path):
+    return response_unsafe_serve_image(werkzeug.security.safe_join(directory, unsafe_path))
+
+
+def response_unsafe_serve_image(safe_path):
+    image = cv2.imread(safe_path)
     if image is None:
         return jsonify({'message': 'Image not found'}), 400
 
@@ -248,7 +294,7 @@ def response_compressed(directory, path):
 @app.route('/templates/<path:path>', methods=['GET'])
 #@jwt_required()
 def serve_templates(path):
-    return response_compressed(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
+    return response_safe_serve_image(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
     """
     path = secure_filename(path)
     #werkzeug.security.safe_join()

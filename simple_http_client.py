@@ -33,7 +33,7 @@ def test_api_barber(img_file):
     #os.environ["REQUESTS_CA_BUNDLE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
     #os.environ["SSL_CERT_FILE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
 
-    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjY5MTE5MCwianRpIjoiODAyYmE3YWUtY2YwYi00NjBhLThhNDItNDdlNWY1Y2JlYmU5IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjY5MTE5MCwiY3NyZiI6IjU4YTM5ZjYxLWUwM2QtNDczYS04NjlmLTFhNjk1MTEwOTYzMyIsImV4cCI6MTcxMjY5MjA5MH0.Do6nIFXL2AVkBjZXnJ4-fev-c4ypQ4kjjx7ZcGkVbU4'
+    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjc4Njg0MCwianRpIjoiMzU0NjJkNmQtMGRhZS00MTY4LThlNWMtMWVhYmUxM2RmMjg3IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjc4Njg0MCwiY3NyZiI6IjA3NzQ4NWQ4LThhNGMtNDM2My1hZDk5LWU4ZDRkYzVlMDdjNyIsImV4cCI6MTcxMjc4Nzc0MH0.P1nvunU4VyPCW3F0ftjW5nujvQCnTNBLxjsSQzNRRB4'
     url = 'http://localhost/api/barber'
 
     headers = {
@@ -55,8 +55,10 @@ def test_api_barber(img_file):
                              #verify='C:\\Users\\rico\\Downloads\\aihairstyler.crt'
                              #verify=False
                              )
-
-    if response.status_code == 422:
+    if response.status_code == 200:
+        j = response.json()
+        print(j['work-id'])
+    elif response.status_code == 422:
         print('invalid access token, retrieve another!')
     else:
         print(response.json())
@@ -69,5 +71,5 @@ if __name__ == '__main__':
     file_path = 'test_partial_side.jpg'
 
     with open(file_path, 'rb') as img_file:
-        for i in range(20):
-            test_api_barber(img_file)
+        #for i in range(20):
+        test_api_barber(img_file)

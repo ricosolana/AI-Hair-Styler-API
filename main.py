@@ -7,8 +7,9 @@ import sys
 import threading
 import cv2
 import numpy as np
+import werkzeug.security
 
-from flask import Flask, jsonify, request, abort, send_from_directory
+from flask import Flask, jsonify, request, abort, send_from_directory, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
 
@@ -27,8 +28,11 @@ FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
 BARBER_FACES_INPUT_DIRECTORY = app.config['BARBER_FACES_INPUT_DIRECTORY']
 SERVING_PROCESSED_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
 SERVING_TEMPLATE_INPUT_DIRECTORY = app.config['SERVING_TEMPLATE_INPUT_DIRECTORY']
-#SERVING_STYLE_INPUT_DIRECTORY = app.config['SERVING_STYLE_INPUT_DIRECTORY']
-#SERVING_COLOR_INPUT_DIRECTORY = app.config['SERVING_COLOR_INPUT_DIRECTORY']
+
+TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
+                                if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
+
+
 
 #rel_template_input_directory = os.path.relpath(path=os.path.abspath(BARBER_FACES_INPUT_DIRECTORY))
 
@@ -200,7 +204,9 @@ def serve_generated(path):
 
     #return send_from_directory(work_directory, path)
 
-    return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
+    return response_compressed(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
+
+    #return send_from_directory(SERVING_PROCESSED_OUTPUT_DIRECTORY, path)
 
 
 @app.route('/api/templates/styles', methods=['GET'])
@@ -209,16 +215,57 @@ def api_templates_styles():
     return jsonify(app.config['STYLES'])
 
 
+@app.route('/api/templates/list', methods=['GET'])
+#@jwt_required()
+def api_templates_list():
+    # dont want to iterate all files
+    return jsonify(TEMPLATE_DIRECTORY_FILE_LIST)
+
+
 @app.route('/api/templates/colors', methods=['GET'])
 #@jwt_required()
 def api_templates_colors():
     return jsonify(app.config['COLORS'])
 
 
+def response_compressed(directory, path):
+    path = secure_filename(path)
+    # werkzeug.security.safe_join()
+    image = cv2.imread(os.path.join(directory, path))
+    if image is None:
+        return jsonify({'message': 'Image not found'}), 400
+
+    image = cv2.resize(image, (256, 256))
+    success, arr = cv2.imencode('.jpg', image,
+                                [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+
+    response = make_response(arr.tobytes())
+    response.headers.set('Content-Type', 'image/jpeg')
+
+    return response
+
+
 @app.route('/templates/<path:path>', methods=['GET'])
 #@jwt_required()
 def serve_templates(path):
-    return send_from_directory(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
+    return response_compressed(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
+    """
+    path = secure_filename(path)
+    #werkzeug.security.safe_join()
+    image = cv2.imread(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, path))
+    if image is None:
+        return jsonify({'message': 'Image not found'}), 400
+
+    image = cv2.resize(image, (256, 256))
+    success, arr = cv2.imencode('.jpg', image,
+                                [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+
+    response = make_response(arr.tobytes())
+    response.headers.set('Content-Type', 'image/jpeg')
+
+    return response
+    #return send_from_directory(SERVING_TEMPLATE_INPUT_DIRECTORY, path)
+    """
 
 
 #@app.route('/api/barber/status', methods=['GET'])

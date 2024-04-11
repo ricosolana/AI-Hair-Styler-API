@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 import time
+import re
 
 import cv2
 import numpy as np
@@ -27,6 +28,7 @@ if not app.config.from_file('config.json', load=json.load):
     exit(1)
 
 BARBERSHOP_DIR = app.config['BARBERSHOP_DIR']
+BARBERSHOP_FAST_GENERATION = app.config['BARBERSHOP_FAST_GENERATION']
 #BARBER_MAIN = app.config['BARBER_MAIN']
 #BARBER_ALIGN = app.config['BARBER_ALIGN']
 USE_FALLBACK_BARBERSHOP = app.config['USE_FALLBACK_BARBERSHOP']
@@ -64,12 +66,14 @@ def walk_single_file(_dir: str | os.PathLike) -> str | None:
 
 
 class CompiledProcess:
-    def __init__(self, work_id: str, unprocessed_face_path: str | os.PathLike, style_filename: str, color_filename: str, demo=False):
+    def __init__(self, work_id: str, unprocessed_face_path: str | os.PathLike, style_filename: str, color_filename: str, demo=False,
+                 quality_factor: float = 1.0):
         self.work_id = work_id
         self.unprocessed_face_path = unprocessed_face_path
         self.style_filename = style_filename
         self.color_filename = color_filename
         self.demo = demo
+        self.quality_factor = quality_factor
 
     # Constant
     def _abs_unprocessed_dir(self):
@@ -99,7 +103,7 @@ class CompiledProcess:
         return os.path.join(self._rel_template_dir(), self.color_filename)
 
     def _abs_output_dir(self):
-        return os.path.join(SERVING_OUTPUT_DIRECTORY, self.work_id)
+        return os.path.join(os.path.abspath(SERVING_OUTPUT_DIRECTORY), self.work_id)
 
     def _is_fallback_barbershop(self):
         return self.demo or USE_FALLBACK_BARBERSHOP
@@ -110,7 +114,24 @@ class CompiledProcess:
     def _barbershop_dir(self):
         return os.path.abspath('.') if self._is_fallback_barbershop() else BARBERSHOP_DIR
 
-    # Run this task
+    def _step_args(self):
+        if BARBERSHOP_FAST_GENERATION:
+            return [
+                '--W_steps', '1',
+                '--FS_steps', '1',
+                '--align_steps1', '1',
+                '--align_steps2', '1',
+                '--blend_steps', '1'
+            ]
+        else:
+            return [
+                '--W_steps', f'{int(1100.0 * self.quality_factor)}',
+                '--FS_steps', f'{int(250.0 * self.quality_factor)}',
+                '--align_steps1', f'{int(140.0 * self.quality_factor)}',
+                '--align_steps2', f'{int(100.0 * self.quality_factor)}',
+                '--blend_steps', f'{int(400.0 * self.quality_factor)}'
+            ]
+
     def execute(self):
         # Generate align output directory
         os.makedirs(self._abs_input_dir(), exist_ok=True)
@@ -147,8 +168,9 @@ class CompiledProcess:
             "--im_path3", self._rel_input_color_file(),  # color
             "--sign", 'realistic',
             "--smooth", '5',
+
             "--output_dir", self._abs_output_dir()  # work_output_directory
-        ], env=os.environ, cwd=self._barbershop_dir())
+        ] + self._step_args(), env=os.environ, cwd=self._barbershop_dir())
 
         if barber_proc.returncode != 0:
             return False
@@ -250,7 +272,7 @@ def api_barber():
         return jsonify({'message': 'Image parsing failed'}), 400
 
     # Save the image to align input directory
-    unprocessed_file_name = work_id + ext
+    unprocessed_file_name = 'image' + ext
     unprocessed_input_dir = os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY, work_id)
     os.makedirs(unprocessed_input_dir, exist_ok=True)
     f.stream.seek(0)
@@ -270,10 +292,12 @@ def api_barber():
 def serve_generated(path):
     safe_path = werkzeug.security.safe_join(SERVING_OUTPUT_DIRECTORY, path)
 
-    with os.scandir(safe_path) as entries:
-        for entry in entries:
-            if entry.is_file():
-                return response_unsafe_serve_image(entry.path)
+    if os.path.exists(safe_path):
+        with os.scandir(safe_path) as entries:
+            for entry in entries:
+                # ^([0-9a-f]{64})_(.+)_(.+)_(\w+).png
+                if entry.is_file() and entry.name.startswith('image'):
+                    return response_unsafe_serve_image(entry.path)
 
     return jsonify({'message': 'Image not found'}), 400
 

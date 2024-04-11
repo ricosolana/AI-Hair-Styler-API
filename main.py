@@ -109,7 +109,10 @@ class CompiledProcess:
                 sys.executable, BARBER_ALIGN,
                 '-unprocessed_dir', self._abs_unprocessed_dir(),
                 "-output_dir", self._abs_input_dir()
-            ], env=os.environ)
+            ]) #, env=os.environ)
+
+            # alternatively, check that the file was actually generated
+            #   this is the ultimate best condition
 
             if align_proc.returncode != 0:
                 # error, we should note this
@@ -159,14 +162,16 @@ def response_safe_serve_image(directory, unsafe_path):
     return response_unsafe_serve_image(werkzeug.security.safe_join(directory, unsafe_path))
 
 
-def response_unsafe_serve_image(safe_path):
+def response_unsafe_serve_image(safe_path, width=None, quality=90):
     image = cv2.imread(safe_path)
     if image is None:
         return jsonify({'message': 'Image not found'}), 400
 
-    image = cv2.resize(image, (256, 256))
+    if width is not None:
+        height, width, _ = image.shape
+        image = cv2.resize(image, (256, 256))
     success, arr = cv2.imencode('.jpg', image,
-                                [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                                [int(cv2.IMWRITE_JPEG_QUALITY), quality])
 
     response = make_response(arr.tobytes())
     response.headers.set('Content-Type', 'image/jpeg')
@@ -202,7 +207,7 @@ def api_token():
 
 # this api is protected
 @app.route('/api/barber', methods=['POST'])
-@jwt_required()
+#@jwt_required()
 def api_barber():
     # Check if there is a video stream in the request
     f = request.files.get('image')

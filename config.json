@@ -1,5 +1,5 @@
 {
-    "BARBER_MAIN": "fake_barber.py",
+    "BARBER_MAIN": "path/to/Barbershop-main/main.py",
     "BARBER_ALIGN": "align.py",
     "FAKE_BARBER_MAIN": "fake_barber.py",
     "BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY": "./barber_faces_unprocessed_input/",

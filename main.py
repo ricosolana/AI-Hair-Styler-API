@@ -6,6 +6,8 @@ import subprocess
 import queue
 import sys
 import threading
+import time
+
 import cv2
 import numpy as np
 import werkzeug.security
@@ -24,18 +26,24 @@ if not app.config.from_file('config.json', load=json.load):
     print('Failed to load config')
     exit(1)
 
-BARBER_MAIN = app.config['BARBER_MAIN']
-BARBER_ALIGN = app.config['BARBER_ALIGN']
-FAKE_BARBER_MAIN = app.config['FAKE_BARBER_MAIN']
-BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY = app.config['BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY']
-BARBER_FACES_INPUT_DIRECTORY = app.config['BARBER_FACES_INPUT_DIRECTORY']
+BARBERSHOP_DIR = app.config['BARBERSHOP_DIR']
+#BARBER_MAIN = app.config['BARBER_MAIN']
+#BARBER_ALIGN = app.config['BARBER_ALIGN']
+USE_FALLBACK_BARBERSHOP = app.config['USE_FALLBACK_BARBERSHOP']
+FALLBACK_BARBERSHOP_MAIN = app.config['FALLBACK_BARBERSHOP_MAIN']
+FACES_UNPROCESSED_INPUT_DIRECTORY = app.config['FACES_UNPROCESSED_INPUT_DIRECTORY']
+FACES_INPUT_DIRECTORY = app.config['FACES_INPUT_DIRECTORY']
 SERVING_OUTPUT_DIRECTORY = app.config['SERVING_PROCESSED_OUTPUT_DIRECTORY']
-SERVING_TEMPLATE_INPUT_DIRECTORY = app.config['SERVING_TEMPLATE_INPUT_DIRECTORY']
+
+BARBERSHOP_MAIN = os.path.join(BARBERSHOP_DIR, 'main.py')
+BARBERSHOP_ALIGN = os.path.join(BARBERSHOP_DIR, 'align_face.py')
+SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-BARBER_EXEC_MISSING = not os.path.exists(BARBER_MAIN)
+#USE_FALLBACK_BARBERSHOP = not os.path.exists(BARBERSHOP_MAIN)
+
 
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
@@ -65,12 +73,12 @@ class CompiledProcess:
 
     # Constant
     def _abs_unprocessed_dir(self):
-        return os.path.abspath(os.path.join(BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY,
+        return os.path.abspath(os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY,
                                             self.work_id))
 
     # Constant
     def _abs_input_dir(self):
-        return os.path.abspath(os.path.join(BARBER_FACES_INPUT_DIRECTORY,
+        return os.path.abspath(os.path.join(FACES_INPUT_DIRECTORY,
                                             self.work_id))
 
     def _abs_template_dir(self):
@@ -93,23 +101,26 @@ class CompiledProcess:
     def _abs_output_dir(self):
         return os.path.join(SERVING_OUTPUT_DIRECTORY, self.work_id)
 
-    def _is_fake_barber(self):
-        return self.demo or BARBER_EXEC_MISSING
+    def _is_fallback_barbershop(self):
+        return self.demo or USE_FALLBACK_BARBERSHOP
 
-    def _barber_exec(self):
-        return FAKE_BARBER_MAIN if self._is_fake_barber() else BARBER_MAIN
+    def _barbershop_main(self):
+        return FALLBACK_BARBERSHOP_MAIN if self._is_fallback_barbershop() else BARBERSHOP_MAIN
+
+    def _barbershop_dir(self):
+        return os.path.abspath('.') if self._is_fallback_barbershop() else BARBERSHOP_DIR
 
     # Run this task
     def execute(self):
         # Generate align output directory
         os.makedirs(self._abs_input_dir(), exist_ok=True)
 
-        if not self._is_fake_barber():
+        if not self._is_fallback_barbershop():
             align_proc = subprocess.run([
-                sys.executable, BARBER_ALIGN,
+                sys.executable, BARBERSHOP_ALIGN,
                 '-unprocessed_dir', self._abs_unprocessed_dir(),
                 "-output_dir", self._abs_input_dir()
-            ]) #, env=os.environ)
+            ], env=os.environ, cwd=self._barbershop_dir())
 
             # alternatively, check that the file was actually generated
             #   this is the ultimate best condition
@@ -123,10 +134,13 @@ class CompiledProcess:
                 os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
 
         # Generate barber output directory
-        os.makedirs(self._abs_output_dir(), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
 
         barber_proc = subprocess.run([
-            sys.executable, self._barber_exec(),
+            sys.executable, self._barbershop_main(),
             '--input_dir', self._abs_input_dir(),
             "--im_path1", self._walk_rel_input_face_file(),  # face
             "--im_path2", self._rel_input_style_file(),  # style
@@ -134,7 +148,7 @@ class CompiledProcess:
             "--sign", 'realistic',
             "--smooth", '5',
             "--output_dir", self._abs_output_dir()  # work_output_directory
-        ], env=os.environ)
+        ], env=os.environ, cwd=self._barbershop_dir())
 
         if barber_proc.returncode != 0:
             return False
@@ -146,11 +160,13 @@ def worker():
     while True:
         # blocks until item available, pops it
         task = task_queue.get()
-        status = task.execute()
-        if not status:
-            print(f'Failure: Task {task.work_id}')
-        else:
-            print(f'Task {task.work_id} success')
+
+        start_time = time.perf_counter()
+        success = task.execute()
+        end_time = time.perf_counter()
+
+        print(f'Task {"succeeded" if success else "failed"} after {end_time - start_time} seconds')
+
         task_queue.task_done()
 
 
@@ -235,7 +251,7 @@ def api_barber():
 
     # Save the image to align input directory
     unprocessed_file_name = work_id + ext
-    unprocessed_input_dir = os.path.join(BARBER_FACES_UNPROCESSED_INPUT_DIRECTORY, work_id)
+    unprocessed_input_dir = os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY, work_id)
     os.makedirs(unprocessed_input_dir, exist_ok=True)
     f.stream.seek(0)
     f.save(os.path.join(unprocessed_input_dir, unprocessed_file_name))

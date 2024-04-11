@@ -33,7 +33,7 @@ def test_api_barber(img_file):
     #os.environ["REQUESTS_CA_BUNDLE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
     #os.environ["SSL_CERT_FILE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
 
-    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjc5NDYxNCwianRpIjoiNjYyMDkzMjUtYjM1Mi00NTE3LTg2MTItNWVlNTVjNDc0NjU3IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjc5NDYxNCwiY3NyZiI6IjAzMzUzNDQ0LTZmZmMtNDE0NC04YzFiLTFjMWZlMzFiZjE4MSIsImV4cCI6MTcxMjc5NTUxNH0.rwVxJJUD01ujFTgGKz2cU2IBXORYvmDOylmn1psQSps'
+    ccess_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjc5NDYxNCwianRpIjoiNjYyMDkzMjUtYjM1Mi00NTE3LTg2MTItNWVlNTVjNDc0NjU3IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjc5NDYxNCwiY3NyZiI6IjAzMzUzNDQ0LTZmZmMtNDE0NC04YzFiLTFjMWZlMzFiZjE4MSIsImV4cCI6MTcxMjc5NTUxNH0.rwVxJJUD01ujFTgGKz2cU2IBXORYvmDOylmn1psQSps'
     url = 'http://localhost/api/barber'
 
     headers = {

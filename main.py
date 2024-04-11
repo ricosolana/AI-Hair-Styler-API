@@ -37,15 +37,6 @@ TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIR
 
 BARBER_EXEC_MISSING = not os.path.exists(BARBER_MAIN)
 
-# TMP DELETE ME!!! (test only)
-#abs_input_directory = os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY)
-#rel_face_input_directory = os.path.relpath(os.path.abspath(BARBER_FACES_INPUT_DIRECTORY), abs_input_directory)
-#rel_template_input_directory = os.path.relpath(os.path.abspath(SERVING_TEMPLATE_INPUT_DIRECTORY),
-#                                               abs_input_directory)
-
-
-
-#rel_template_input_directory = os.path.relpath(path=os.path.abspath(BARBER_FACES_INPUT_DIRECTORY))
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 #app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -56,9 +47,7 @@ jwt = JWTManager(app)
 task_queue = queue.LifoQueue()
 
 
-#def walk_single_file(_dir: str | os.PathLike, work_id: str) -> str | None:
 def walk_single_file(_dir: str | os.PathLike) -> str | None:
-    #with os.scandir(os.path.join(_dir, work_id)) as entries:
     with os.scandir(_dir) as entries:
         for entry in entries:
             if entry.is_file():
@@ -67,9 +56,6 @@ def walk_single_file(_dir: str | os.PathLike) -> str | None:
 
 
 class CompiledProcess:
-    # TODO where should face file be initially saved
-    #   we can save it here, given we directly provide the face file bytes received from client
-    #   essentially this is a wrapper
     def __init__(self, work_id: str, unprocessed_face_path: str | os.PathLike, style_filename: str, color_filename: str, demo=False):
         self.work_id = work_id
         self.unprocessed_face_path = unprocessed_face_path

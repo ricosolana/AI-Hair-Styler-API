@@ -1,11 +1,4 @@
-*.svg
-*.jpg
 .idea/workspace.xml
-key.pem
-certs/ca-key.pem
-certs/server-key.pem
-serving_output/
-certs1/server-key.pem
-certs1/ca-key.pem
-certs/server-req.pem
-certs1/server-req.pem
+serving_processed_output/
+barber_faces_input/
+barber_faces_unprocessed_input

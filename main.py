@@ -49,7 +49,7 @@ TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIR
 
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
-#app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
+app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
 app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
 jwt = JWTManager(app)
 
@@ -256,7 +256,7 @@ def index_path():
 # This endpoint is accessible only from localhost
 @app.route('/auth/token', methods=['GET'])
 def api_token():
-    if request.remote_addr != '127.0.0.1':
+    if request.remote_addr != '127.0.0.1' or request.headers['Host'] != 'localhost':
         return jsonify({'message': 'Must be localhost'}), 403  # Forbidden
 
     # Generate a token without requiring user_id or any other data
@@ -267,7 +267,7 @@ def api_token():
 
 # this api is protected
 @app.route('/api/barber', methods=['POST'])
-#@jwt_required()
+@jwt_required()
 def api_barber():
     # Check if there is a video stream in the request
     f = request.files.get('image')
@@ -321,6 +321,7 @@ def api_barber():
 # Usage:
 #   http://localhost:80/generated/6b3a1377639e398ed126b32aafaa73c73ce03d9f75abddafc0d9feedbdcaafe3
 @app.route('/generated/<path:path>')
+#@jwt_required()
 def serve_generated(path):
     safe_path = werkzeug.security.safe_join(SERVING_OUTPUT_DIRECTORY, path)
 
@@ -370,6 +371,7 @@ def api_barber_status():
 """
 
 
+#app.run(host='0.0.0.0', port=80)
 app.run(host='127.0.0.1', port=80)
 #app.run(host='127.0.0.1', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
 #app.run(host='192.168.137.1', port=80)

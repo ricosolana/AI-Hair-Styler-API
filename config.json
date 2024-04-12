@@ -1,5 +1,6 @@
 {
     "BARBERSHOP_DIR": "C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/",
+    "todo_BARBERSHOP_MAX_QUALITY": 1.0,
     "BARBERSHOP_FAST_GENERATION": false,
     "USE_FALLBACK_BARBERSHOP": false,
     "FALLBACK_BARBERSHOP_MAIN": "./fake_barber.py",

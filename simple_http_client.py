@@ -33,9 +33,9 @@ def test_api_barber(img_file):
     #os.environ["REQUESTS_CA_BUNDLE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
     #os.environ["SSL_CERT_FILE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
 
-    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjg1MTIwOSwianRpIjoiZWFmMmEzM2YtNzVkNS00NmM1LTkxOWYtYjkyMjIzNTJmNzExIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjg1MTIwOSwiY3NyZiI6ImJiNGYyNmQxLWZlYmYtNDRlNi1hNTJiLTAyMjA0NGNiYzMwZCIsImV4cCI6MTcxMjg1MjEwOX0.Vzl6SP1U15u1U5XjfoncGi0zP8rAH_7qvCAp9qYI2yY'
+    access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjkwMTE2OSwianRpIjoiYWQ3N2I5ZDQtYzA0Mi00Y2NiLWEyMTYtZjQyNDkyZGY3OWVlIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjkwMTE2OSwiY3NyZiI6IjMwYThiNGExLTQ2ZmQtNGE5MS1iNTRiLWQzZGM0NzE4N2NkOCIsImV4cCI6MTcxMjkwMjA2OX0.ejyVHwBGxhqeI1g28so64kekVt0mb3WIFaczzYB6Pk8'
     #url = 'http://localhost/api/barber'
-    url = 'http://192.168.137.1/api/barber'
+    url = 'http://localhost/api/barber'
 
     headers = {
         'Authorization': f'Bearer {access_token}'
@@ -69,7 +69,8 @@ if __name__ == '__main__':
     # test_api_pose()
 
     #test_api_svoji()
-    file_path = 'test_partial_side.jpg'
+    #file_path = 'rect-image.jpeg'
+    file_path = 'square-image.jpg'
 
     with open(file_path, 'rb') as img_file:
         #for i in range(20):

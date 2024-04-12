@@ -197,9 +197,13 @@ def worker():
         print(f'Processing {task.work_id}')
 
         start_time = time.perf_counter()
-        success = task.execute()
-        end_time = time.perf_counter()
+        success = False
+        try:
+            success = task.execute()
+        except Exception as err:
+            print(f'Error: {type(err)}')
 
+        end_time = time.perf_counter()
         print(f'Task {task.work_id} {"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
         task_queue.task_done()
@@ -306,7 +310,16 @@ def api_barber():
     unprocessed_input_dir = os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY, work_id)
     os.makedirs(unprocessed_input_dir, exist_ok=True)
     f.stream.seek(0)
-    f.save(os.path.join(unprocessed_input_dir, unprocessed_file_name))
+
+    h, w, _ = cv_image.shape
+    image_is_uneven = h != w
+    if image_is_uneven:
+        # resize image to fit
+        cv_image = cv2.resize(cv_image, (min(w, h), min(w, h)))
+
+    cv2.imwrite(os.path.join(unprocessed_input_dir, unprocessed_file_name), cv_image)
+
+    #f.save(os.path.join(unprocessed_input_dir, unprocessed_file_name))
 
     demo = request.args.get('demo', 'false') == 'true'
 

@@ -1,5 +1,9 @@
 # AI Hair Styler API
 
+## Getting started
+
+Set `env['JWT_SECRET_KEY']` to something secret.
+
 ## Barbershop install tips
 
 add to path (change the version)

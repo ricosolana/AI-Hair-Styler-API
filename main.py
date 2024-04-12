@@ -66,14 +66,19 @@ def walk_single_file(_dir: str | os.PathLike) -> str | None:
 
 
 class CompiledProcess:
-    def __init__(self, work_id: str, unprocessed_face_path: str | os.PathLike, style_filename: str, color_filename: str, demo=False,
-                 quality_factor: float = 1.0):
+    def __init__(self,
+                 work_id: str,
+                 unprocessed_face_path: str | os.PathLike,
+                 style_filename: str,
+                 color_filename: str,
+                 demo: bool,
+                 quality: float):
         self.work_id = work_id
         self.unprocessed_face_path = unprocessed_face_path
         self.style_filename = style_filename
         self.color_filename = color_filename
         self.demo = demo
-        self.quality_factor = quality_factor
+        self.quality = quality
 
     # Constant
     def _abs_unprocessed_dir(self):
@@ -93,6 +98,7 @@ class CompiledProcess:
 
     # Walks over disk to extract name from single-file
     def _walk_rel_input_face_file(self):
+        # no file found,
         abs_input_face_file = walk_single_file(self._abs_input_dir())
         return os.path.relpath(abs_input_face_file, self._abs_input_dir())
 
@@ -115,22 +121,25 @@ class CompiledProcess:
         return os.path.abspath('.') if self._is_fallback_barbershop() else BARBERSHOP_DIR
 
     def _step_args(self):
-        if BARBERSHOP_FAST_GENERATION:
-            return [
-                '--W_steps', '1',
-                '--FS_steps', '1',
-                '--align_steps1', '1',
-                '--align_steps2', '1',
-                '--blend_steps', '1'
-            ]
+        if self._is_fallback_barbershop():
+            return []
         else:
-            return [
-                '--W_steps', f'{int(1100.0 * self.quality_factor)}',
-                '--FS_steps', f'{int(250.0 * self.quality_factor)}',
-                '--align_steps1', f'{int(140.0 * self.quality_factor)}',
-                '--align_steps2', f'{int(100.0 * self.quality_factor)}',
-                '--blend_steps', f'{int(400.0 * self.quality_factor)}'
-            ]
+            if BARBERSHOP_FAST_GENERATION:
+                return [
+                    '--W_steps', '1',
+                    '--FS_steps', '1',
+                    '--align_steps1', '1',
+                    '--align_steps2', '1',
+                    '--blend_steps', '1'
+                ]
+            else:
+                return [
+                    '--W_steps', f'{int(1100.0 * self.quality)}',
+                    '--FS_steps', f'{int(250.0 * self.quality)}',
+                    '--align_steps1', f'{int(140.0 * self.quality)}',
+                    '--align_steps2', f'{int(100.0 * self.quality)}',
+                    '--blend_steps', f'{int(400.0 * self.quality)}'
+                ]
 
     def execute(self):
         # Generate align output directory
@@ -145,6 +154,8 @@ class CompiledProcess:
 
             # alternatively, check that the file was actually generated
             #   this is the ultimate best condition
+
+            # in what cases would image not be generated?
 
             if align_proc.returncode != 0:
                 # error, we should note this
@@ -181,13 +192,15 @@ class CompiledProcess:
 def worker():
     while True:
         # blocks until item available, pops it
-        task = task_queue.get()
+        task: CompiledProcess = task_queue.get()
+
+        print(f'Processing {task.work_id}')
 
         start_time = time.perf_counter()
         success = task.execute()
         end_time = time.perf_counter()
 
-        print(f'Task {"succeeded" if success else "failed"} after {end_time - start_time} seconds')
+        print(f'Task {task.work_id} {"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
         task_queue.task_done()
 
@@ -206,8 +219,8 @@ def response_unsafe_serve_image(safe_path, width=None, quality=90):
         return jsonify({'message': 'Image not found'}), 400
 
     if width is not None:
-        height, width, _ = image.shape
-        image = cv2.resize(image, (256, 256))
+        img_height, img_width, _ = image.shape
+        image = cv2.resize(image, (width, img_width * (width / img_height)))
     success, arr = cv2.imencode('.jpg', image,
                                 [int(cv2.IMWRITE_JPEG_QUALITY), quality])
 
@@ -217,8 +230,17 @@ def response_unsafe_serve_image(safe_path, width=None, quality=90):
     return response
 
 
-def compile_process(work_id: str, unprocessed_face_path: str | os.PathLike, style_filename: str, color_filename: str):
-    task_queue.put(CompiledProcess(work_id, unprocessed_face_path, style_filename, color_filename))
+def compile_process(work_id: str,
+                    unprocessed_face_path: str | os.PathLike,
+                    style_filename: str, color_filename: str,
+                    demo: bool,
+                    quality: float):
+    task_queue.put(CompiledProcess(work_id,
+                                   unprocessed_face_path,
+                                   style_filename,
+                                   color_filename,
+                                   demo=demo,
+                                   quality=quality))
 
 
 # Root path
@@ -260,6 +282,14 @@ def api_barber():
     if color_file_name is None:
         return jsonify({'message': 'Parameter \'color-file\' is missing'}), 400
 
+    quality_text = request.args.get('quality', '1.0')
+    try:
+        quality = float(quality_text)
+    except ValueError:
+        return jsonify({'message': 'Parameter \'quality\' must be a float'}), 400
+
+    quality = max(0, min(quality, 1))
+
     work_id = secrets.token_hex(32)
 
     ext = os.path.splitext(f.filename)[-1].lower()
@@ -278,7 +308,9 @@ def api_barber():
     f.stream.seek(0)
     f.save(os.path.join(unprocessed_input_dir, unprocessed_file_name))
 
-    compile_process(work_id, unprocessed_file_name, style_file_name, color_file_name)
+    demo = request.args.get('demo', 'false') == 'true'
+
+    compile_process(work_id, unprocessed_file_name, style_file_name, color_file_name, demo, quality)
 
     return jsonify({
         'message': 'Task is enqueued',

@@ -34,7 +34,8 @@ def test_api_barber(img_file):
     #os.environ["SSL_CERT_FILE"] = 'C:\\Users\\rico\\Documents\\GitHub\\AI-Hair-Styler-API\\certs\\ca-cert.pem'
 
     access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjg1MTIwOSwianRpIjoiZWFmMmEzM2YtNzVkNS00NmM1LTkxOWYtYjkyMjIzNTJmNzExIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjg1MTIwOSwiY3NyZiI6ImJiNGYyNmQxLWZlYmYtNDRlNi1hNTJiLTAyMjA0NGNiYzMwZCIsImV4cCI6MTcxMjg1MjEwOX0.Vzl6SP1U15u1U5XjfoncGi0zP8rAH_7qvCAp9qYI2yY'
-    url = 'http://localhost/api/barber'
+    #url = 'http://localhost/api/barber'
+    url = 'http://192.168.137.1/api/barber'
 
     headers = {
         'Authorization': f'Bearer {access_token}'

@@ -80,6 +80,11 @@ class CompiledProcess:
         self.demo = demo
         self.quality = quality
 
+    def get_progress(self):
+        # somehow after reading from stdout, retrieve some
+        # stats to get some good estimations on where we are
+        pass
+
     # Constant
     def _abs_unprocessed_dir(self):
         return os.path.abspath(os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY,
@@ -134,11 +139,11 @@ class CompiledProcess:
                 ]
             else:
                 return [
-                    '--W_steps', f'{int(1100.0 * self.quality)}',
-                    '--FS_steps', f'{int(250.0 * self.quality)}',
-                    '--align_steps1', f'{int(140.0 * self.quality)}',
-                    '--align_steps2', f'{int(100.0 * self.quality)}',
-                    '--blend_steps', f'{int(400.0 * self.quality)}'
+                    '--W_steps', f'{max(1, int(1100.0 * self.quality))}',
+                    '--FS_steps', f'{max(1, int(250.0 * self.quality))}',
+                    '--align_steps1', f'{max(1, int(140.0 * self.quality))}',
+                    '--align_steps2', f'{max(1, int(100.0 * self.quality))}',
+                    '--blend_steps', f'{max(1, int(400.0 * self.quality))}'
                 ]
 
     def execute(self):
@@ -164,6 +169,10 @@ class CompiledProcess:
             shutil.copyfile(
                 os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
                 os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
+
+        if walk_single_file(self._abs_input_dir()) is None:
+            print('Image align did not recognize face; too squished?')
+            return False
 
         # Generate barber output directory
         os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
@@ -201,6 +210,7 @@ def worker():
         try:
             success = task.execute()
         except Exception as err:
+            print(err)
             print(f'Error: {type(err)}')
 
         end_time = time.perf_counter()
@@ -259,7 +269,7 @@ def index_path():
 
 # This endpoint is accessible only from localhost
 @app.route('/auth/token', methods=['GET'])
-def api_token():
+def api_auth_token():
     if request.remote_addr != '127.0.0.1' or request.headers['Host'] != 'localhost':
         return jsonify({'message': 'Must be localhost'}), 403  # Forbidden
 
@@ -267,6 +277,12 @@ def api_token():
     access_token = create_access_token(identity="anonymous")
     print(f'Generated token: {access_token}')
     return jsonify(access_token=access_token)
+
+
+@app.route('/auth/check', methods=['GET'])
+@jwt_required()
+def api_auth_check():
+    return jsonify({'message': 'Success'})
 
 
 # this api is protected

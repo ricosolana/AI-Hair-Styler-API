@@ -1,24 +1,19 @@
 import json
 import os
+import queue
 import secrets
 import shutil
 import subprocess
-import queue
 import sys
 import threading
 import time
-import re
 
 import cv2
 import numpy as np
 import werkzeug.security
-
-from flask import Flask, jsonify, request, abort, send_from_directory, make_response
+from flask import Flask, jsonify, request, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
-from werkzeug.utils import secure_filename, safe_join
-
-# hmm idk
-# openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
+from werkzeug.utils import secure_filename
 
 
 app = Flask(__name__)
@@ -29,8 +24,6 @@ if not app.config.from_file('config.json', load=json.load):
 
 BARBERSHOP_DIR = app.config['BARBERSHOP_DIR']
 BARBERSHOP_FAST_GENERATION = app.config['BARBERSHOP_FAST_GENERATION']
-#BARBER_MAIN = app.config['BARBER_MAIN']
-#BARBER_ALIGN = app.config['BARBER_ALIGN']
 USE_FALLBACK_BARBERSHOP = app.config['USE_FALLBACK_BARBERSHOP']
 FALLBACK_BARBERSHOP_MAIN = app.config['FALLBACK_BARBERSHOP_MAIN']
 FACES_UNPROCESSED_INPUT_DIRECTORY = app.config['FACES_UNPROCESSED_INPUT_DIRECTORY']
@@ -44,8 +37,6 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-#USE_FALLBACK_BARBERSHOP = not os.path.exists(BARBERSHOP_MAIN)
-
 
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
@@ -54,7 +45,9 @@ app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.t
 jwt = JWTManager(app)
 
 # thread-safe
-task_queue = queue.LifoQueue()
+# TODO use PriorityQueue to prioritize certain requests
+#   maybe VIP or developer tasks
+task_queue = queue.Queue(maxsize=1000)
 
 
 def walk_single_file(_dir: str | os.PathLike) -> str | None:
@@ -219,7 +212,7 @@ def worker():
         task_queue.task_done()
 
 
-worker_thread = threading.Thread(target=worker)
+worker_thread = threading.Thread(target=worker, name='BarberTaskWorker')
 worker_thread.start()
 
 
@@ -399,10 +392,5 @@ def api_barber_status():
     # TODO return process status
 """
 
-
-#app.run(host='0.0.0.0', port=80)
 app.run(host='127.0.0.1', port=80)
-#app.run(host='127.0.0.1', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))
 #app.run(host='192.168.137.1', port=80)
-
-#app.run(host='0.0.0.0', port=443, ssl_context=('certs1/server-cert.pem', 'certs1/server-key.pem'))

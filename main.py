@@ -5,6 +5,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -173,6 +174,53 @@ class CompiledProcess:
         os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
         os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
 
+        args = [
+            sys.executable, self._barbershop_main(),
+            '--input_dir', self._abs_input_dir(),
+            "--im_path1", self._walk_rel_input_face_file(),  # face
+            "--im_path2", self._rel_input_style_file(),  # style
+            "--im_path3", self._rel_input_color_file(),  # color
+            "--sign", 'realistic',
+            "--smooth", '5',
+
+            "--output_dir", self._abs_output_dir()  # work_output_directory
+        ] + self._step_args()
+
+        #master_fd, slave_fd = pty.openpty()
+
+        #w = tempfile.NamedTemporaryFile()
+        with subprocess.Popen(args,
+                              env=os.environ,
+                              cwd=self._barbershop_dir(),
+                              #stdout=w,
+                              stdout=subprocess.PIPE,
+                              #stderr=subprocess.STDOUT,
+                              stderr=subprocess.PIPE,
+
+                              bufsize=0,
+                              #stdout=slave_fd,
+                              #stdin=slave_fd,  # redundant/unused?
+                              #stderr=slave_fd,
+                              ) as barber_proc:
+            #os.close(slave_fd)
+
+            result = barber_proc.poll()
+            if result == 0:
+                return True
+            elif result is not None:
+                return False
+
+            line = barber_proc.stdout.readline()
+
+            #with open(master_fd, 'r') as stdout:
+                #for line in stdout:
+
+            # yield to other threads
+            time.sleep(0)
+
+        return False
+
+        """
         barber_proc = subprocess.run([
             sys.executable, self._barbershop_main(),
             '--input_dir', self._abs_input_dir(),
@@ -189,6 +237,7 @@ class CompiledProcess:
             return False
 
         return True
+        """
 
 
 def worker():

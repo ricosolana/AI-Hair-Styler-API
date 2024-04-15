@@ -14,6 +14,7 @@ import numpy as np
 from enum import Enum
 import collections
 import traceback
+from winpty import PtyProcess
 
 import cv2
 import numpy as np
@@ -22,6 +23,7 @@ from flask import Flask, jsonify, request, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
 
+PROGRAM_START_TIME = time.perf_counter()
 
 class TaskStatus(Enum):
     QUEUED = 0
@@ -33,8 +35,9 @@ class TaskStatus(Enum):
     COMPLETE = 6
     ERROR_FACE_ALIGN = 7  # image is too squished or no face detected (file never saved)
     ERROR_UNKNOWN = 8
-    PROCESSING = 9  # being crunched by barber (when we cannot track stdout)
-    CANCELLED = 10
+    ERROR_FATAL = 9
+    PROCESSING = 10  # being crunched by barber (when we cannot track stdout)
+    CANCELLED = 11
 
 
 app = Flask(__name__)
@@ -58,14 +61,13 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-PATTERN_IMAGE_NUMBER = re.compile('(Number of images: )(\\d+)')
+PATTERN_IMAGE_NUMBER = re.compile('Number of images: (\\d+)')
 PATTERN_EMBEDDING_PROGRESS = re.compile('(\\d+)\\D*(\\d+)\\D*(\\d+)\\D*(\\d+:\\d+)<\\??(\\d+:\\d+)\\D*(\\d+\\.\\d+)')
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
 app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
 jwt = JWTManager(app)
-
 
 def walk_single_file(_dir: str | os.PathLike) -> str | None:
     with os.scandir(_dir) as entries:
@@ -84,11 +86,11 @@ class StdDeque:
     def append(self, value: float):
         self._deque.append(value)
 
-    def is_consistent(self):
+    def is_consistent(self, max_std=0.1):
         if len(self._deque) >= 30:
             std = np.std(self._deque)
 
-            if std < 0.1:
+            if std < max_std:
                 return True
 
         return False
@@ -123,18 +125,18 @@ class CompiledProcess:
         self.quality = quality
 
         self.status = TaskStatus.QUEUED
-        self.time_queued = time.perf_counter()
-        self.time_started = 0
-        self.time_ended = 0
+        self.time_queued = time.perf_counter()  # point in seconds
+        self.time_align_started = 0  # point in seconds
+        self.time_barber_started = 0  # point in seconds
+        self.time_barber_estimate = 0  # point in seconds
+        self.time_barber_ended = 0  # point in seconds
 
-        #self.reliable_it_s = 0
-        #self.num_images = 0
-        self.initial_time_estimate = 0
+        self.initial_barbar_duration_estimate = 0  # duration in seconds
 
-    def get_progress(self):
+#    def get_progress(self):
         # somehow after reading from stdout, retrieve some
         # stats to get some good estimations on where we are
-        pass
+#        pass
 
     # Constant
     def _abs_unprocessed_dir(self):
@@ -203,139 +205,141 @@ class CompiledProcess:
                 '--blend_steps', str(self._blend_steps())
             ]
 
-    def _set_status_concurrent(self, status: TaskStatus):
+    #def initial_barber_duration_estimate(self):
+        #with self:
+            #return self._initial_barbar_duration_estimate
+
+#    def duration_barber(self):
+#        with self:
+#            return self.time_barber_ended - self.time_barber_started
+
+    # time is converted to time.time()
+#    def time_barber_started(self):
+#        with self:
+#            (self.duration_barber() - PROGRAM_START_TIME) + time.time()
+
+    def set_status_concurrent(self, status: TaskStatus):
         with self:
             self.status = status
 
     def __enter__(self):
+        print(f'__enter__ acquiring... {threading.current_thread().name}')
         CompiledProcess.task_status_lock.acquire()
+        print(f'__enter__ acquired. {threading.current_thread().name}')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        print(f'__exit__ releasing... {threading.current_thread().name}')
         CompiledProcess.task_status_lock.release()
+        print(f'__exit__ released. {threading.current_thread().name}')
 
     def execute(self):
-        try:
-            with self:
-                self.time_started = time.perf_counter()
+        with self:
+            self.time_align_started = time.perf_counter()
 
-            # Generate align output directory
-            os.makedirs(self._abs_input_dir(), exist_ok=True)
+        # Generate align output directory
+        os.makedirs(self._abs_input_dir(), exist_ok=True)
 
-            if not self._is_fallback_barbershop():
-                self._set_status_concurrent(TaskStatus.FACE_ALIGN)
+        if not self._is_fallback_barbershop():
+            self.set_status_concurrent(TaskStatus.FACE_ALIGN)
 
-                align_proc = subprocess.run([
-                    sys.executable, BARBERSHOP_ALIGN,
-                    '-unprocessed_dir', self._abs_unprocessed_dir(),
-                    "-output_dir", self._abs_input_dir()
-                ], env=os.environ, cwd=self._barbershop_dir())
+            align_proc = subprocess.run([
+                sys.executable, BARBERSHOP_ALIGN,
+                '-unprocessed_dir', self._abs_unprocessed_dir(),
+                "-output_dir", self._abs_input_dir()
+            ], env=os.environ, cwd=self._barbershop_dir())
 
-                # alternatively, check that the file was actually generated
-                #   this is the ultimate best condition
-
-                # in what cases would image not be generated?
-
-                if align_proc.returncode != 0:
-                    self._set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
-                    # error, we should note this
-                    return False
-            else:
-                shutil.copyfile(
-                    os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
-                    os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
-
-            if walk_single_file(self._abs_input_dir()) is None:
-                self._set_status_concurrent(TaskStatus.FACE_ALIGN)
-                print('Image align did not recognize face; too squished?')
+            if align_proc.returncode != 0:
+                self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
+                # error, we should note this
                 return False
+        else:
+            shutil.copyfile(
+                os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
+                os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
 
-            # Generate barber output directory
-            os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
-            os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
-            os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
-            os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
+        if walk_single_file(self._abs_input_dir()) is None:
+            self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
+            print('Image align did not recognize face; too squished?')
+            return False
 
-            self._set_status_concurrent(TaskStatus.PROCESSING)
+        # Generate barber output directory
+        os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
+        os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
 
-            args = [
-                sys.executable, self._barbershop_main(),
-                '--input_dir', self._abs_input_dir(),
-                "--im_path1", self._walk_rel_input_face_file(),  # face
-                "--im_path2", self._rel_input_style_file(),  # style
-                "--im_path3", self._rel_input_color_file(),  # color
-                "--sign", 'realistic',
-                "--smooth", '5',
+        self.set_status_concurrent(TaskStatus.PROCESSING)
 
-                "--output_dir", self._abs_output_dir()  # work_output_directory
-            ] + self._step_args()
+        args = [
+            sys.executable, self._barbershop_main(),
+            '--input_dir', self._abs_input_dir(),
+            "--im_path1", self._walk_rel_input_face_file(),  # face
+            "--im_path2", self._rel_input_style_file(),  # style
+            "--im_path3", self._rel_input_color_file(),  # color
+            "--sign", 'realistic',
+            "--smooth", '5',
 
-            std_deque = StdDeque()
-            num_images = 0
-            prev_time = time.perf_counter()
+            "--output_dir", self._abs_output_dir()  # work_output_directory
+        ] + self._step_args()
 
-            tmp = tempfile.SpooledTemporaryFile(max_size=4096)
-            with (subprocess.Popen(args,
-                                  env=os.environ,
-                                  cwd=self._barbershop_dir(),
-                                  stdout=tmp,
-                                  stderr=subprocess.STDOUT,
-                                  bufsize=0) as barber_proc):
-                while True:
-                    result = barber_proc.poll()
-                    if result == 0:
-                        self._set_status_concurrent(TaskStatus.COMPLETE)
-                        return True
-                    elif result is not None:
-                        self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
-                        return False
+        std_deque = StdDeque()
+        num_images = 0
 
-                    # barbershop prints out 4 times/s
+        with self:
+            self.time_barber_started = time.perf_counter()
 
-                    now = time.perf_counter()
-                    if now - prev_time > 0.1:
-                        prev_time = now
+        # skip stats if low quality. will take barely any time
+        perform_stats = self.quality > 0.03 and not self._is_fallback_barbershop()
+        initial_barbar_duration_estimate = 0
 
-                        tmp.seek(0, io.SEEK_SET)
-                        line = tmp.readline().decode('utf-8')
-                        pos = tmp.tell()
-                        size = tmp.seek(0, io.SEEK_END)
+        barber_proc = PtyProcess.spawn(
+            ' '.join(args),
+            cwd=self._barbershop_dir(),
+            env=os.environ)
+        while barber_proc.isalive():
+            try:
+                line = barber_proc.read()
+            except EOFError:
+                break
 
-                        # unix only ...
-                        #os.lockf()
+            if perform_stats:
+                with self:
+                    if num_images == 0:
+                        match = PATTERN_IMAGE_NUMBER.search(line)
+                        if match is not None:
+                            num_images = int(match.group(1))
+                    elif self.initial_barbar_duration_estimate == 0:
+                        match = PATTERN_EMBEDDING_PROGRESS.search(line)
+                        if match is not None:
+                            val = float(match.group(6))
+                            std_deque.append(val)
+                            if std_deque.is_consistent(0.05):
+                                reliable_it_s = std_deque.average()
 
-                        print(f'{pos} / {size} ||| {line}')
+                                # calculate estimate time for entire process:
+                                total_steps = (self._w_steps() + self._fs_steps()) * num_images \
+                                    + self._align_steps1() + self._align_steps2() + self._blend_steps()
 
-                        with self:
-                            if num_images == 0:
-                                match = PATTERN_IMAGE_NUMBER.match(line)
-                                if match is not None:
-                                    num_images = int(match.group(1))
-                            elif self.initial_time_estimate == 0:
-                                match = PATTERN_EMBEDDING_PROGRESS.match(line)
-                                if match is not None:
-                                    val = float(match.group(6))
-                                    std_deque.append(val)
-                                    if std_deque.is_consistent():
-                                        reliable_it_s = std_deque.average()
+                                # target mask (step1 / step2 ) both times
+                                total_steps += 80 * 4
 
-                                        # calculate estimate time for entire process:
-                                        total_steps = (self._w_steps() + self._fs_steps()) * num_images \
-                                            + self._align_steps1() + self._align_steps2() + self._blend_steps()
+                                # subtract current step
+                                total_steps -= int(match.group(2))
 
-                                        # target mask (step1 / step2 ) both times
-                                        total_steps += 80 * 4
+                                self.time_barber_estimate = time.perf_counter()
+                                self.initial_barbar_duration_estimate = total_steps / reliable_it_s
 
-                                        self.initial_time_estimate = total_steps * reliable_it_s
+                                print(f'Initial time estimate: {self.initial_barbar_duration_estimate}s')
 
-                                        print(f'Initial time estimate: {self.initial_time_estimate}s')
+        result = barber_proc.exitstatus
+        if result == 0:
+            self.set_status_concurrent(TaskStatus.COMPLETE)
+            return True
 
-                    tmp.seek(0, io.SEEK_SET)
-                    time.sleep(0.01)
+        #except Exception:
+            #print(traceback.format_exc())
 
-        except Exception:
-            print(traceback.format_exc())
-
-        self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
+        self.set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
         return False
 
 
@@ -352,7 +356,13 @@ def worker():
         print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
-        success = task_current.execute()
+        success = False
+        try:
+            success = task_current.execute()
+        except Exception:
+            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
+            print(traceback.format_exc())
+
         end_time = time.perf_counter()
 
         print(f'Task {task_current.work_id} '
@@ -360,7 +370,7 @@ def worker():
 
         # lock
         with task_current:
-            task_current.time_ended = end_time
+            task_current.time_barber_ended = end_time
 
         CompiledProcess.task_queue.task_done()
 
@@ -524,11 +534,23 @@ def api_status():
         if not task:
             return jsonify({'message': 'Task not found'}), 400
 
+        duration_barber = task.time_barber_ended - task.time_barber_started
+        estimate = task.initial_barbar_duration_estimate
+
         js = {
             'status': task.status.name,
             'status-value': task.status.value,
-            # TODO add progress...
-            #'estimated-remaining':
+            'time-queued': task.time_queued,
+            'time-align-started': task.time_align_started,
+            'time-barber-started': task.time_barber_started,
+            #'time-barber-started': task.time_barber_started(),
+            'time-barber-ended': task.time_barber_ended,
+            'initial-barber-duration-estimate': task.initial_barbar_duration_estimate,
+            #'initial-barber-duration-estimate': task.initial_barber_duration_estimate(),
+            'duration-estimate-difference': ((estimate - duration_barber) / estimate) if estimate != 0 else 0,
+            'duration-barber': duration_barber,
+            #'duration-barber': task.duration_barber()
+            #'utc-estimated-end'
         }
 
         return jsonify(js)

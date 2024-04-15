@@ -10,7 +10,8 @@ def process():
         print(i)
         time.sleep(1)
 
-    while True:
+    #while True:
+    if True:
         bar = tqdm(range(1000), desc='Embedding', leave=False)
 
         for _ in bar:

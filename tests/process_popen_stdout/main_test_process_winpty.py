@@ -12,8 +12,11 @@ args = [
 def process():
     proc = PtyProcess.spawn(' '.join(args))
     while proc.isalive():
-        print(proc.read())
+        print(proc.exitstatus)
+        #print(proc.read())
         time.sleep(0.25)
+
+    print(proc.exitstatus)
 
 
 if __name__ == '__main__':

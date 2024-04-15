@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 import tempfile
+import collections
 import numpy as np
 #import pty # test this now
 

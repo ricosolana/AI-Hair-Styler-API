@@ -5,7 +5,7 @@ import sys
 import time
 #import tempfile
 #from filelock import FileLock
-import pty
+#import pty
 
 MAIN_PROGRAM = 'sample_tqdm.py'
 
@@ -17,7 +17,8 @@ args = [
 def process():
     #tmp = tempfile.SpooledTemporaryFile()
     #tmp = io.StringIO()
-    master_fd, slave_fd = pty.openpty()
+    #master_fd, slave_fd = pty.openpty()
+    master_fd, slave_fd = os.openpty()
 
     with subprocess.Popen(args,
                           env=os.environ,

@@ -12,6 +12,8 @@ import threading
 import time
 import numpy as np
 from enum import Enum
+import collections
+import traceback
 
 import cv2
 import numpy as np
@@ -56,11 +58,8 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-PATTERN_IMAGE_NUMBER = re.compile('(Number of images: )(\d+)')
-#PATTERN_EMBEDDING_NUM = re.compile('(Embedding: *)(\d+)')
-PATTERN_EMBEDDING_PROGRESS = re.compile('(\d+)\D*(\d+)\D*(\d+)\D*(\d+:\d+)<\??(\d+:\d+)\D*(\d+\.\d+)')
-
-
+PATTERN_IMAGE_NUMBER = re.compile('(Number of images: )(\\d+)')
+PATTERN_EMBEDDING_PROGRESS = re.compile('(\\d+)\\D*(\\d+)\\D*(\\d+)\\D*(\\d+:\\d+)<\\??(\\d+:\\d+)\\D*(\\d+\\.\\d+)')
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -74,6 +73,28 @@ def walk_single_file(_dir: str | os.PathLike) -> str | None:
             if entry.is_file():
                 return os.path.abspath(entry.path)
     return None
+
+
+class StdDeque:
+    def __init__(self, maxlen=32):
+        if maxlen < 30:
+            raise ValueError('maxlen must be at least 30 for reliable stdev')
+        self._deque = collections.deque(maxlen=maxlen)
+
+    def append(self, value: float):
+        self._deque.append(value)
+
+    def is_consistent(self):
+        if len(self._deque) >= 30:
+            std = np.std(self._deque)
+
+            if std < 0.1:
+                return True
+
+        return False
+
+    def average(self):
+        return np.average(self._deque)
 
 
 class CompiledProcess:
@@ -105,6 +126,10 @@ class CompiledProcess:
         self.time_queued = time.perf_counter()
         self.time_started = 0
         self.time_ended = 0
+
+        #self.reliable_it_s = 0
+        #self.num_images = 0
+        self.initial_time_estimate = 0
 
     def get_progress(self):
         # somehow after reading from stdout, retrieve some
@@ -151,26 +176,32 @@ class CompiledProcess:
     def _barbershop_dir(self):
         return os.path.abspath('.') if self._is_fallback_barbershop() else BARBERSHOP_DIR
 
+    def _w_steps(self):
+        return 1 if BARBERSHOP_FAST_GENERATION else max(1, int(1100.0 * self.quality))
+
+    def _fs_steps(self):
+        return 1 if BARBERSHOP_FAST_GENERATION else max(1, int(250.0 * self.quality))
+
+    def _align_steps1(self):
+        return 1 if BARBERSHOP_FAST_GENERATION else max(1, int(140.0 * self.quality))
+
+    def _align_steps2(self):
+        return 1 if BARBERSHOP_FAST_GENERATION else max(1, int(100.0 * self.quality))
+
+    def _blend_steps(self):
+        return 1 if BARBERSHOP_FAST_GENERATION else max(1, int(400.0 * self.quality))
+
     def _step_args(self):
         if self._is_fallback_barbershop():
             return []
         else:
-            if BARBERSHOP_FAST_GENERATION:
-                return [
-                    '--W_steps', '1',
-                    '--FS_steps', '1',
-                    '--align_steps1', '1',
-                    '--align_steps2', '1',
-                    '--blend_steps', '1'
-                ]
-            else:
-                return [
-                    '--W_steps', f'{max(1, int(1100.0 * self.quality))}',
-                    '--FS_steps', f'{max(1, int(250.0 * self.quality))}',
-                    '--align_steps1', f'{max(1, int(140.0 * self.quality))}',
-                    '--align_steps2', f'{max(1, int(100.0 * self.quality))}',
-                    '--blend_steps', f'{max(1, int(400.0 * self.quality))}'
-                ]
+            return [
+                '--W_steps', str(self._w_steps()),
+                '--FS_steps', str(self._fs_steps()),
+                '--align_steps1', str(self._align_steps1()),
+                '--align_steps2', str(self._align_steps2()),
+                '--blend_steps', str(self._blend_steps())
+            ]
 
     def _set_status_concurrent(self, status: TaskStatus):
         with self:
@@ -238,73 +269,73 @@ class CompiledProcess:
                 "--output_dir", self._abs_output_dir()  # work_output_directory
             ] + self._step_args()
 
-            img_num = 0  # set this
-
-            predict_stage = 1
-            predict_consistent_time = 0  # the length of time it/s has remained relatively consistent
-
-            # will shift elements to the
-            # rolling = np.roll(np.arange(0, 4), 1)
-            rolling = np.zeros(32)
+            std_deque = StdDeque()
+            num_images = 0
+            prev_time = time.perf_counter()
 
             tmp = tempfile.SpooledTemporaryFile(max_size=4096)
-            with subprocess.Popen(args,
+            with (subprocess.Popen(args,
                                   env=os.environ,
                                   cwd=self._barbershop_dir(),
                                   stdout=tmp,
                                   stderr=subprocess.STDOUT,
-                                  bufsize=0,
-                                  ) as barber_proc:
-                #os.close(slave_fd)
+                                  bufsize=0) as barber_proc):
+                while True:
+                    result = barber_proc.poll()
+                    if result == 0:
+                        self._set_status_concurrent(TaskStatus.COMPLETE)
+                        return True
+                    elif result is not None:
+                        self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
+                        return False
 
-                result = barber_proc.poll()
-                if result == 0:
-                    self._set_status_concurrent(TaskStatus.COMPLETE)
-                    return True
-                elif result is not None:
-                    self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
-                    return False
+                    # barbershop prints out 4 times/s
 
-                line = barber_proc.stdout.readline()
+                    now = time.perf_counter()
+                    if now - prev_time > 0.1:
+                        prev_time = now
 
-                #with open(master_fd, 'r') as stdout:
-                    #for line in stdout:
+                        tmp.seek(0, io.SEEK_SET)
+                        line = tmp.readline().decode('utf-8')
+                        pos = tmp.tell()
+                        size = tmp.seek(0, io.SEEK_END)
 
-                # yield to other threads
+                        # unix only ...
+                        #os.lockf()
 
-                # barbershop prints out 4 times/s
-                tmp.seek(0, io.SEEK_SET)
-                line = tmp.readline()
-                tmp.seek(0, io.SEEK_SET)
+                        print(f'{pos} / {size} ||| {line}')
 
-                # py regex
+                        with self:
+                            if num_images == 0:
+                                match = PATTERN_IMAGE_NUMBER.match(line)
+                                if match is not None:
+                                    num_images = int(match.group(1))
+                            elif self.initial_time_estimate == 0:
+                                match = PATTERN_EMBEDDING_PROGRESS.match(line)
+                                if match is not None:
+                                    val = float(match.group(6))
+                                    std_deque.append(val)
+                                    if std_deque.is_consistent():
+                                        reliable_it_s = std_deque.average()
 
-                match = PATTERN_EMBEDDING_PROGRESS.match(line)
-                if match is not None:
-                    # how to wrap a bunch of the last
-                    # np.sum(np.array(__nums) / float(len(__nums)))
-                    # match
-                    if predict_stage == 0:
-                        # retrieve an initial estimation on it/s
-                        # after a few logs to ensure accuracy
-                        # after a small while the times become consistent
-                        # what does consistent mean
+                                        # calculate estimate time for entire process:
+                                        total_steps = (self._w_steps() + self._fs_steps()) * num_images \
+                                            + self._align_steps1() + self._align_steps2() + self._blend_steps()
 
-                        # if held around a rolling avg for around 3s
-                        
-                        avg = np.sum(np.array(__nums) / float(len(__nums)))
+                                        # target mask (step1 / step2 ) both times
+                                        total_steps += 80 * 4
 
+                                        self.initial_time_estimate = total_steps * reliable_it_s
 
-                # now parse
+                                        print(f'Initial time estimate: {self.initial_time_estimate}s')
 
-                time.sleep(0.5)
+                    tmp.seek(0, io.SEEK_SET)
+                    time.sleep(0.01)
 
-            self._set_status_concurrent(TaskStatus.COMPLETE)
-            return True
-        except Exception as err:
-            self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
-            print(err)
+        except Exception:
+            print(traceback.format_exc())
 
+        self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
         return False
 
 

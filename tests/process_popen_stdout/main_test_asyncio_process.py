@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import time
+import asyncio
 
 MAIN_PROGRAM = 'sample_tqdm.py'
 
@@ -11,18 +12,12 @@ args = [
 
 
 def process():
-    # https://koldfront.dk/making_subprocesspopen_in_python_3_play_nice_with_elaborate_output_1594
-
     with subprocess.Popen(args,
                           env=os.environ,
                           stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT,
-                          bufsize=1,
-                          universal_newlines=True,
-                          text=True
+                          stderr=subprocess.PIPE,
+                          bufsize=0,
                           ) as proc:
-        #stdout = open(os.dup(proc.stdout.fileno()), newline='')
-
         while True:
             result = proc.poll()
             if result == 0:
@@ -30,21 +25,12 @@ def process():
             elif result is not None:
                 return False
 
-
-            #proc.stdout.S
             # doesnt read when tqdm changes buffer
             #proc.stdout.write(b'\r')
             #proc.stdout.flush()
             #line = proc.stdout.readline()
 
-
-
-            #proc.stdout.
-
-            #print(proc.stdout.readline())
-            c = proc.stdout.read(1)
-            if c != '':
-                print(c)
+            print(proc.stdout.read())
 
 
             #print(line)

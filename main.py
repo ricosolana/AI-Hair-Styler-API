@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from enum import Enum
 
 import cv2
 import numpy as np
@@ -14,6 +15,20 @@ import werkzeug.security
 from flask import Flask, jsonify, request, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
+
+
+class TaskStatus(Enum):
+    QUEUED = 0
+    FACE_ALIGN = 1
+    EMBEDDING = 2
+    MASK_STEP = 3
+    ALIGN_STEP = 4
+    BLEND = 5
+    COMPLETE = 6
+    ERROR_FACE_ALIGN = 7  # image is too squished or no face detected (file never saved)
+    ERROR_UNKNOWN = 8
+    PROCESSING = 9  # being crunched by barber (when we cannot track stdout)
+    CANCELLED = 10
 
 
 app = Flask(__name__)
@@ -37,17 +52,10 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-
-
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
 app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
 jwt = JWTManager(app)
-
-# thread-safe
-# TODO use PriorityQueue to prioritize certain requests
-#   maybe VIP or developer tasks
-task_queue = queue.Queue(maxsize=1000)
 
 
 def walk_single_file(_dir: str | os.PathLike) -> str | None:
@@ -59,6 +67,16 @@ def walk_single_file(_dir: str | os.PathLike) -> str | None:
 
 
 class CompiledProcess:
+    pass
+
+
+class CompiledProcess:
+    # thread-safe
+    task_current: CompiledProcess
+    task_queue = queue.Queue(maxsize=1000)
+    task_status_map = {}
+    task_status_lock = threading.Lock()
+
     def __init__(self,
                  work_id: str,
                  unprocessed_face_path: str | os.PathLike,
@@ -72,6 +90,11 @@ class CompiledProcess:
         self.color_filename = color_filename
         self.demo = demo
         self.quality = quality
+
+        self.status = TaskStatus.QUEUED
+        self.time_queued = time.perf_counter()
+        self.time_started = 0
+        self.time_ended = 0
 
     def get_progress(self):
         # somehow after reading from stdout, retrieve some
@@ -139,77 +162,107 @@ class CompiledProcess:
                     '--blend_steps', f'{max(1, int(400.0 * self.quality))}'
                 ]
 
+    def _set_status_concurrent(self, status: TaskStatus):
+        CompiledProcess.task_status_lock.acquire()
+        self.status = status
+        CompiledProcess.task_status_lock.release()
+
     def execute(self):
-        # Generate align output directory
-        os.makedirs(self._abs_input_dir(), exist_ok=True)
+        try:
+            CompiledProcess.task_status_lock.acquire()
+            self.time_started = time.perf_counter()
+            CompiledProcess.task_status_lock.release()
 
-        if not self._is_fallback_barbershop():
-            align_proc = subprocess.run([
-                sys.executable, BARBERSHOP_ALIGN,
-                '-unprocessed_dir', self._abs_unprocessed_dir(),
-                "-output_dir", self._abs_input_dir()
-            ], env=os.environ, cwd=self._barbershop_dir())
+            # Generate align output directory
+            os.makedirs(self._abs_input_dir(), exist_ok=True)
 
-            # alternatively, check that the file was actually generated
-            #   this is the ultimate best condition
+            if not self._is_fallback_barbershop():
+                self._set_status_concurrent(TaskStatus.FACE_ALIGN)
 
-            # in what cases would image not be generated?
+                align_proc = subprocess.run([
+                    sys.executable, BARBERSHOP_ALIGN,
+                    '-unprocessed_dir', self._abs_unprocessed_dir(),
+                    "-output_dir", self._abs_input_dir()
+                ], env=os.environ, cwd=self._barbershop_dir())
 
-            if align_proc.returncode != 0:
-                # error, we should note this
+                # alternatively, check that the file was actually generated
+                #   this is the ultimate best condition
+
+                # in what cases would image not be generated?
+
+                if align_proc.returncode != 0:
+                    self._set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
+                    # error, we should note this
+                    return False
+            else:
+                shutil.copyfile(
+                    os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
+                    os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
+
+            if walk_single_file(self._abs_input_dir()) is None:
+                self._set_status_concurrent(TaskStatus.FACE_ALIGN)
+                print('Image align did not recognize face; too squished?')
                 return False
-        else:
-            shutil.copyfile(
-                os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
-                os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
 
-        if walk_single_file(self._abs_input_dir()) is None:
-            print('Image align did not recognize face; too squished?')
-            return False
+            # Generate barber output directory
+            os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
+            os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
+            os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
+            os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
 
-        # Generate barber output directory
-        os.makedirs(os.path.join(self._abs_output_dir(), 'W+'), exist_ok=True)
-        os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
-        os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
-        os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
+            self._set_status_concurrent(TaskStatus.PROCESSING)
 
-        barber_proc = subprocess.run([
-            sys.executable, self._barbershop_main(),
-            '--input_dir', self._abs_input_dir(),
-            "--im_path1", self._walk_rel_input_face_file(),  # face
-            "--im_path2", self._rel_input_style_file(),  # style
-            "--im_path3", self._rel_input_color_file(),  # color
-            "--sign", 'realistic',
-            "--smooth", '5',
+            barber_proc = subprocess.run([
+                sys.executable, self._barbershop_main(),
+                '--input_dir', self._abs_input_dir(),
+                "--im_path1", self._walk_rel_input_face_file(),  # face
+                "--im_path2", self._rel_input_style_file(),  # style
+                "--im_path3", self._rel_input_color_file(),  # color
+                "--sign", 'realistic',
+                "--smooth", '5',
 
-            "--output_dir", self._abs_output_dir()  # work_output_directory
-        ] + self._step_args(), env=os.environ, cwd=self._barbershop_dir())
+                "--output_dir", self._abs_output_dir()  # work_output_directory
+            ] + self._step_args(), env=os.environ, cwd=self._barbershop_dir())
 
-        if barber_proc.returncode != 0:
-            return False
+            if barber_proc.returncode != 0:
+                self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
+                return False
 
-        return True
+            self._set_status_concurrent(TaskStatus.COMPLETE)
+            return True
+        except Exception as err:
+            self._set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
+            print(err)
+
+        return False
 
 
 def worker():
     while True:
         # blocks until item available, pops it
-        task: CompiledProcess = task_queue.get()
+        task_current: CompiledProcess = CompiledProcess.task_queue.get()
 
-        print(f'Processing {task.work_id}')
+        # lock
+        CompiledProcess.task_status_lock.acquire()
+        CompiledProcess.task_current = task_current
+        CompiledProcess.task_status_map[task_current.work_id] = task_current
+        CompiledProcess.task_status_lock.release()
+
+        print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
-        success = False
-        try:
-            success = task.execute()
-        except Exception as err:
-            print(err)
-            print(f'Error: {type(err)}')
-
+        success = task_current.execute()
         end_time = time.perf_counter()
-        print(f'Task {task.work_id} {"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
-        task_queue.task_done()
+        print(f'Task {task_current.work_id} '
+              f'{"succeeded" if success else "failed"} after {end_time - start_time} seconds')
+
+        # lock
+        CompiledProcess.task_status_lock.acquire()
+        task_current.time_ended = end_time
+        CompiledProcess.task_status_lock.release()
+
+        CompiledProcess.task_queue.task_done()
 
 
 worker_thread = threading.Thread(target=worker, name='BarberTaskWorker')
@@ -242,12 +295,13 @@ def compile_process(work_id: str,
                     style_filename: str, color_filename: str,
                     demo: bool,
                     quality: float):
-    task_queue.put(CompiledProcess(work_id,
-                                   unprocessed_face_path,
-                                   style_filename,
-                                   color_filename,
-                                   demo=demo,
-                                   quality=quality))
+    CompiledProcess.task_queue.put(
+        CompiledProcess(work_id,
+                        unprocessed_face_path,
+                        style_filename,
+                        color_filename,
+                        demo=demo,
+                        quality=quality))
 
 
 # Root path
@@ -255,7 +309,7 @@ def compile_process(work_id: str,
 def index_path():
     return jsonify({
         'name': 'ai hair styler generator api',
-        'task-queue': task_queue.qsize(),
+        'task-queue': CompiledProcess.task_queue.qsize(),
         'version': 'v1.2.0'
     })
 
@@ -355,6 +409,32 @@ def serve_generated(path):
                     return response_unsafe_serve_image(entry.path)
 
     return jsonify({'message': 'Image not found'}), 400
+
+
+@app.route('/api/status', methods=['GET'])
+@jwt_required()
+def api_status():
+    work_id = request.args.get('work-id')
+    if work_id is None:
+        return jsonify({'message': 'Parameter \'work-id\' is missing'}), 400
+
+    CompiledProcess.task_status_lock.acquire()
+    task: CompiledProcess = CompiledProcess.task_status_map.get(work_id)
+
+    if not task:
+        CompiledProcess.task_status_lock.release()
+        return jsonify({'message': 'Task not found'}), 400
+
+    js = {
+        'status': task.status.name,
+        'status-value': task.status.value,
+        # TODO add progress...
+        #'estimated-remaining':
+    }
+
+    CompiledProcess.task_status_lock.release()
+
+    return jsonify(js)
 
 
 @app.route('/api/templates/styles', methods=['GET'])

@@ -1,6 +1,8 @@
+import io
 import json
 import os
 import queue
+import re
 import secrets
 import shutil
 import subprocess
@@ -8,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import numpy as np
 from enum import Enum
 
 import cv2
@@ -52,6 +55,12 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
+
+PATTERN_IMAGE_NUMBER = re.compile('(Number of images: )(\d+)')
+#PATTERN_EMBEDDING_NUM = re.compile('(Embedding: *)(\d+)')
+PATTERN_EMBEDDING_PROGRESS = re.compile('(\d+)\D*(\d+)\D*(\d+)\D*(\d+:\d+)<\??(\d+:\d+)\D*(\d+\.\d+)')
+
+
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -229,21 +238,22 @@ class CompiledProcess:
                 "--output_dir", self._abs_output_dir()  # work_output_directory
             ] + self._step_args()
 
-            #master_fd, slave_fd = pty.openpty()
+            img_num = 0  # set this
 
-            #w = tempfile.NamedTemporaryFile()
+            predict_stage = 1
+            predict_consistent_time = 0  # the length of time it/s has remained relatively consistent
+
+            # will shift elements to the
+            # rolling = np.roll(np.arange(0, 4), 1)
+            rolling = np.zeros(32)
+
+            tmp = tempfile.SpooledTemporaryFile(max_size=4096)
             with subprocess.Popen(args,
                                   env=os.environ,
                                   cwd=self._barbershop_dir(),
-                                  #stdout=w,
-                                  stdout=subprocess.PIPE,
-                                  #stderr=subprocess.STDOUT,
-                                  stderr=subprocess.PIPE,
-
+                                  stdout=tmp,
+                                  stderr=subprocess.STDOUT,
                                   bufsize=0,
-                                  #stdout=slave_fd,
-                                  #stdin=slave_fd,  # redundant/unused?
-                                  #stderr=slave_fd,
                                   ) as barber_proc:
                 #os.close(slave_fd)
 
@@ -261,7 +271,33 @@ class CompiledProcess:
                     #for line in stdout:
 
                 # yield to other threads
-                time.sleep(0)
+
+                # barbershop prints out 4 times/s
+                tmp.seek(0, io.SEEK_SET)
+                line = tmp.readline()
+                tmp.seek(0, io.SEEK_SET)
+
+                # py regex
+
+                match = PATTERN_EMBEDDING_PROGRESS.match(line)
+                if match is not None:
+                    # how to wrap a bunch of the last
+                    # np.sum(np.array(__nums) / float(len(__nums)))
+                    # match
+                    if predict_stage == 0:
+                        # retrieve an initial estimation on it/s
+                        # after a few logs to ensure accuracy
+                        # after a small while the times become consistent
+                        # what does consistent mean
+
+                        # if held around a rolling avg for around 3s
+                        
+                        avg = np.sum(np.array(__nums) / float(len(__nums)))
+
+
+                # now parse
+
+                time.sleep(0.5)
 
             self._set_status_concurrent(TaskStatus.COMPLETE)
             return True

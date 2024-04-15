@@ -163,15 +163,19 @@ class CompiledProcess:
                 ]
 
     def _set_status_concurrent(self, status: TaskStatus):
+        with self:
+            self.status = status
+
+    def __enter__(self):
         CompiledProcess.task_status_lock.acquire()
-        self.status = status
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         CompiledProcess.task_status_lock.release()
 
     def execute(self):
         try:
-            CompiledProcess.task_status_lock.acquire()
-            self.time_started = time.perf_counter()
-            CompiledProcess.task_status_lock.release()
+            with self:
+                self.time_started = time.perf_counter()
 
             # Generate align output directory
             os.makedirs(self._abs_input_dir(), exist_ok=True)
@@ -243,10 +247,9 @@ def worker():
         task_current: CompiledProcess = CompiledProcess.task_queue.get()
 
         # lock
-        CompiledProcess.task_status_lock.acquire()
-        CompiledProcess.task_current = task_current
-        CompiledProcess.task_status_map[task_current.work_id] = task_current
-        CompiledProcess.task_status_lock.release()
+        with task_current:
+            CompiledProcess.task_current = task_current
+            CompiledProcess.task_status_map[task_current.work_id] = task_current
 
         print(f'Processing {task_current.work_id}')
 
@@ -258,9 +261,8 @@ def worker():
               f'{"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
         # lock
-        CompiledProcess.task_status_lock.acquire()
-        task_current.time_ended = end_time
-        CompiledProcess.task_status_lock.release()
+        with task_current:
+            task_current.time_ended = end_time
 
         CompiledProcess.task_queue.task_done()
 
@@ -418,23 +420,20 @@ def api_status():
     if work_id is None:
         return jsonify({'message': 'Parameter \'work-id\' is missing'}), 400
 
-    CompiledProcess.task_status_lock.acquire()
-    task: CompiledProcess = CompiledProcess.task_status_map.get(work_id)
+    with CompiledProcess.task_status_lock:
+        task: CompiledProcess = CompiledProcess.task_status_map.get(work_id)
 
-    if not task:
-        CompiledProcess.task_status_lock.release()
-        return jsonify({'message': 'Task not found'}), 400
+        if not task:
+            return jsonify({'message': 'Task not found'}), 400
 
-    js = {
-        'status': task.status.name,
-        'status-value': task.status.value,
-        # TODO add progress...
-        #'estimated-remaining':
-    }
+        js = {
+            'status': task.status.name,
+            'status-value': task.status.value,
+            # TODO add progress...
+            #'estimated-remaining':
+        }
 
-    CompiledProcess.task_status_lock.release()
-
-    return jsonify(js)
+        return jsonify(js)
 
 
 @app.route('/api/templates/styles', methods=['GET'])

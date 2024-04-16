@@ -99,16 +99,35 @@ class StdDeque:
         return np.average(self._deque)
 
 
-class CompiledProcess:
-    pass
+#class CompiledProcess:
+#    pass
+
+
+class MyLock:
+    def __init__(self):
+        self._lock = threading.Lock()
+
+    def __enter__(self):
+        print(f'__enter__ acquiring... {threading.current_thread().name}')
+        self._lock.acquire()
+        print(f'__enter__ acquired. {threading.current_thread().name}')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print(f'__exit__ releasing... {threading.current_thread().name}')
+        self._lock.release()
+        print(f'__exit__ released. {threading.current_thread().name}')
+
+
+task_queue = queue.Queue(maxsize=1000)
+task_status_map = {}
+#task_status_lock = threading.Lock()
+task_status_lock = MyLock()
 
 
 class CompiledProcess:
     # thread-safe
-    task_current: CompiledProcess
-    task_queue = queue.Queue(maxsize=1000)
-    task_status_map = {}
-    task_status_lock = threading.Lock()
+    # TODO is this needed? reassignment is odd
+    #task_current: CompiledProcess
 
     def __init__(self,
                  work_id: str,
@@ -219,21 +238,23 @@ class CompiledProcess:
 #            (self.duration_barber() - PROGRAM_START_TIME) + time.time()
 
     def set_status_concurrent(self, status: TaskStatus):
-        with self:
+        with task_status_lock:
             self.status = status
 
+    """
     def __enter__(self):
         print(f'__enter__ acquiring... {threading.current_thread().name}')
-        CompiledProcess.task_status_lock.acquire()
+        task_status_lock.acquire()
         print(f'__enter__ acquired. {threading.current_thread().name}')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         print(f'__exit__ releasing... {threading.current_thread().name}')
         CompiledProcess.task_status_lock.release()
         print(f'__exit__ released. {threading.current_thread().name}')
+    """
 
     def execute(self):
-        with self:
+        with task_status_lock:
             self.time_align_started = time.perf_counter()
 
         # Generate align output directory
@@ -285,7 +306,7 @@ class CompiledProcess:
         std_deque = StdDeque()
         num_images = 0
 
-        with self:
+        with task_status_lock:
             self.time_barber_started = time.perf_counter()
 
         # skip stats if low quality. will take barely any time
@@ -299,45 +320,57 @@ class CompiledProcess:
         while barber_proc.isalive():
             try:
                 line = barber_proc.read()
-            except EOFError:
+            #except EOFError:
+            except Exception:
+                print('Breaking')
+                print(traceback.format_exc())
+                with open('breaking.txt', 'w') as ff:
+                    ff.write('yes, EOF was reached')
                 break
 
             if perform_stats:
-                with self:
-                    if num_images == 0:
-                        match = PATTERN_IMAGE_NUMBER.search(line)
-                        if match is not None:
-                            num_images = int(match.group(1))
-                    elif self.initial_barbar_duration_estimate == 0:
-                        match = PATTERN_EMBEDDING_PROGRESS.search(line)
-                        if match is not None:
-                            val = float(match.group(6))
-                            std_deque.append(val)
-                            if std_deque.is_consistent(0.05):
-                                reliable_it_s = std_deque.average()
+                if num_images == 0:
+                    match = PATTERN_IMAGE_NUMBER.search(line)
+                    if match is not None:
+                        num_images = int(match.group(1))
+                elif initial_barbar_duration_estimate == 0:
+                    match = PATTERN_EMBEDDING_PROGRESS.search(line)
+                    if match is not None:
+                        val = float(match.group(6))
+                        std_deque.append(val)
+                        if std_deque.is_consistent(0.05):
+                            reliable_it_s = std_deque.average()
 
-                                # calculate estimate time for entire process:
-                                total_steps = (self._w_steps() + self._fs_steps()) * num_images \
-                                    + self._align_steps1() + self._align_steps2() + self._blend_steps()
+                            # calculate estimate time for entire process:
+                            total_steps = (self._w_steps() + self._fs_steps()) * num_images \
+                                + self._align_steps1() + self._align_steps2() + self._blend_steps()
 
-                                # target mask (step1 / step2 ) both times
-                                total_steps += 80 * 4
+                            # target mask (step1 / step2 ) both times
+                            total_steps += 80 * 4
 
-                                # subtract current step
-                                total_steps -= int(match.group(2))
+                            # subtract current step
+                            total_steps -= int(match.group(2))
 
+                            initial_barbar_duration_estimate = total_steps / reliable_it_s
+
+                            with task_status_lock:
                                 self.time_barber_estimate = time.perf_counter()
-                                self.initial_barbar_duration_estimate = total_steps / reliable_it_s
+                                self.initial_barbar_duration_estimate = initial_barbar_duration_estimate
 
-                                print(f'Initial time estimate: {self.initial_barbar_duration_estimate}s')
+                            print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
+
+        print('Completed')
 
         result = barber_proc.exitstatus
         if result == 0:
+            print('Success')
             self.set_status_concurrent(TaskStatus.COMPLETE)
             return True
 
         #except Exception:
             #print(traceback.format_exc())
+
+        print('Failure')
 
         self.set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
         return False
@@ -346,22 +379,21 @@ class CompiledProcess:
 def worker():
     while True:
         # blocks until item available, pops it
-        task_current: CompiledProcess = CompiledProcess.task_queue.get()
+        task_current: CompiledProcess = task_queue.get()
 
         # lock
-        with task_current:
-            CompiledProcess.task_current = task_current
-            CompiledProcess.task_status_map[task_current.work_id] = task_current
+        with task_status_lock:
+            #CompiledProcess.task_current = task_current
+            task_status_map[task_current.work_id] = task_current
 
         print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
-        success = False
         try:
             success = task_current.execute()
         except Exception:
-            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
             print(traceback.format_exc())
+            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
 
         end_time = time.perf_counter()
 
@@ -369,10 +401,10 @@ def worker():
               f'{"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
         # lock
-        with task_current:
+        with task_status_lock:
             task_current.time_barber_ended = end_time
 
-        CompiledProcess.task_queue.task_done()
+        task_queue.task_done()
 
 
 worker_thread = threading.Thread(target=worker, name='BarberTaskWorker')
@@ -405,13 +437,17 @@ def compile_process(work_id: str,
                     style_filename: str, color_filename: str,
                     demo: bool,
                     quality: float):
-    CompiledProcess.task_queue.put(
-        CompiledProcess(work_id,
-                        unprocessed_face_path,
-                        style_filename,
-                        color_filename,
-                        demo=demo,
-                        quality=quality))
+    task = CompiledProcess(work_id,
+                           unprocessed_face_path,
+                           style_filename,
+                           color_filename,
+                           demo=demo,
+                           quality=quality)
+    task_queue.put(task)
+
+    with task_status_lock:
+        # CompiledProcess.task_current = task_current
+        task_status_map[task.work_id] = task
 
 
 # Root path
@@ -419,7 +455,7 @@ def compile_process(work_id: str,
 def index_path():
     return jsonify({
         'name': 'ai hair styler generator api',
-        'task-queue': CompiledProcess.task_queue.qsize(),
+        #'task-queue': task_queue.qsize(),
         'version': 'v1.2.0'
     })
 
@@ -528,8 +564,8 @@ def api_status():
     if work_id is None:
         return jsonify({'message': 'Parameter \'work-id\' is missing'}), 400
 
-    with CompiledProcess.task_status_lock:
-        task: CompiledProcess = CompiledProcess.task_status_map.get(work_id)
+    with task_status_lock:
+        task: CompiledProcess = task_status_map.get(work_id)
 
         if not task:
             return jsonify({'message': 'Task not found'}), 400

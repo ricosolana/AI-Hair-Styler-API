@@ -1,3 +1,4 @@
+import datetime
 import io
 import json
 import os
@@ -13,7 +14,7 @@ import time
 import numpy as np
 from enum import Enum
 import collections
-import traceback
+#import traceback
 from winpty import PtyProcess
 
 import cv2
@@ -150,7 +151,7 @@ class CompiledProcess:
         self.time_barber_estimate = 0  # point in seconds
         self.time_barber_ended = 0  # point in seconds
 
-        self.initial_barbar_duration_estimate = 0  # duration in seconds
+        self.initial_barber_duration_estimate = 0  # duration in seconds
 
 #    def get_progress(self):
         # somehow after reading from stdout, retrieve some
@@ -313,19 +314,29 @@ class CompiledProcess:
         perform_stats = self.quality > 0.03 and not self._is_fallback_barbershop()
         initial_barbar_duration_estimate = 0
 
+        #proc_line_buffer = []
+        def readlinelike(proc):
+            buf = []
+            while 1:
+                try:
+                    ch = proc.read(1)
+                except EOFError:
+                    return ''.join(buf)
+                buf.append(ch)
+                if ch in ('\n', '\r'):
+                    return ''.join(buf)
+
         barber_proc = PtyProcess.spawn(
             ' '.join(args),
             cwd=self._barbershop_dir(),
             env=os.environ)
-        while barber_proc.isalive():
+        #barber_proc.pty.read(1)
+        while True:
             try:
-                line = barber_proc.read()
-            #except EOFError:
-            except Exception:
+                line = readlinelike(barber_proc)
+            except EOFError:
                 print('Breaking')
-                print(traceback.format_exc())
-                with open('breaking.txt', 'w') as ff:
-                    ff.write('yes, EOF was reached')
+                #print(traceback.format_exc())
                 break
 
             if perform_stats:
@@ -355,7 +366,7 @@ class CompiledProcess:
 
                             with task_status_lock:
                                 self.time_barber_estimate = time.perf_counter()
-                                self.initial_barbar_duration_estimate = initial_barbar_duration_estimate
+                                self.initial_barber_duration_estimate = initial_barbar_duration_estimate
 
                             print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
 
@@ -382,17 +393,18 @@ def worker():
         task_current: CompiledProcess = task_queue.get()
 
         # lock
-        with task_status_lock:
+        #with task_status_lock:
             #CompiledProcess.task_current = task_current
-            task_status_map[task_current.work_id] = task_current
+            #task_status_map[task_current.work_id] = task_current
 
         print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
+        success = False
         try:
             success = task_current.execute()
         except Exception:
-            print(traceback.format_exc())
+            #print(traceback.format_exc())
             task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
 
         end_time = time.perf_counter()
@@ -420,9 +432,20 @@ def response_unsafe_serve_image(safe_path, width=None, quality=90):
     if image is None:
         return jsonify({'message': 'Image not found'}), 400
 
-    if width is not None:
-        img_height, img_width, _ = image.shape
-        image = cv2.resize(image, (width, img_width * (width / img_height)))
+    img_height, img_width, _ = image.shape
+    #width = min(img_width, width if width is not None else)
+    #if img_width > 600:
+        #width =
+    if width is not None or img_width > 600:
+        # If image is just too big
+        width = min(256, width if width is not None else img_width)
+
+        # Sanitize width [1, img_width]
+        width = max(1, min(width, img_width))
+
+        dsize = (width, int(img_width * (width / img_height)))
+
+        image = cv2.resize(image, dsize=dsize)
     success, arr = cv2.imencode('.jpg', image,
                                 [int(cv2.IMWRITE_JPEG_QUALITY), quality])
 
@@ -443,11 +466,11 @@ def compile_process(work_id: str,
                            color_filename,
                            demo=demo,
                            quality=quality)
-    task_queue.put(task)
-
     with task_status_lock:
         # CompiledProcess.task_current = task_current
         task_status_map[task.work_id] = task
+
+    task_queue.put(task)
 
 
 # Root path
@@ -547,12 +570,26 @@ def api_barber():
 def serve_generated(path):
     safe_path = werkzeug.security.safe_join(SERVING_OUTPUT_DIRECTORY, path)
 
+    width = request.args.get('width')
+    quality = request.args.get('quality', '90')
+
+    if width is not None:
+        try:
+            width = int(width)
+        except (ValueError, TypeError):
+            return jsonify({'message': 'Width must be an integer'}), 400
+
+    try:
+        quality = int(quality)
+    except ValueError:
+        return jsonify({'message': 'Quality must be an integer'}), 400
+
     if os.path.exists(safe_path):
         with os.scandir(safe_path) as entries:
             for entry in entries:
                 # ^([0-9a-f]{64})_(.+)_(.+)_(\w+).png
                 if entry.is_file() and entry.name.startswith('image'):
-                    return response_unsafe_serve_image(entry.path)
+                    return response_unsafe_serve_image(entry.path, width=width, quality=quality)
 
     return jsonify({'message': 'Image not found'}), 400
 
@@ -571,7 +608,9 @@ def api_status():
             return jsonify({'message': 'Task not found'}), 400
 
         duration_barber = task.time_barber_ended - task.time_barber_started
-        estimate = task.initial_barbar_duration_estimate
+        estimate = task.initial_barber_duration_estimate
+
+        # time.time()
 
         js = {
             'status': task.status.name,
@@ -581,9 +620,9 @@ def api_status():
             'time-barber-started': task.time_barber_started,
             #'time-barber-started': task.time_barber_started(),
             'time-barber-ended': task.time_barber_ended,
-            'initial-barber-duration-estimate': task.initial_barbar_duration_estimate,
+            'initial-barber-duration-estimate': estimate,
             #'initial-barber-duration-estimate': task.initial_barber_duration_estimate(),
-            'duration-estimate-difference': ((estimate - duration_barber) / estimate) if estimate != 0 else 0,
+            #'duration-estimate-difference': ((estimate - duration_barber) / estimate) if estimate != 0 else 0,
             'duration-barber': duration_barber,
             #'duration-barber': task.duration_barber()
             #'utc-estimated-end'

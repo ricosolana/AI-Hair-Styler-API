@@ -12,11 +12,13 @@ def process():
 
     #while True:
     if True:
-        bar = tqdm(range(1000), desc='Embedding', leave=False)
+        bar = tqdm(range(200), desc='Embedding', leave=False)
 
         for _ in bar:
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 
 if __name__ == '__main__':
     process()
+
+    print('ending')

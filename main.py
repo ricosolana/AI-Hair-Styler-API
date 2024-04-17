@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import time
-from enum import Enum
+from enum import Enum, auto
 
 import cv2
 import numpy as np
@@ -23,18 +23,25 @@ PROGRAM_START_TIME = time.perf_counter()
 
 
 class TaskStatus(Enum):
-    QUEUED = 0
-    FACE_ALIGN = 1
-    EMBEDDING = 2
-    MASK_STEP = 3
-    ALIGN_STEP = 4
-    BLEND = 5
-    COMPLETE = 6
-    ERROR_FACE_ALIGN = 7  # image is too squished or no face detected (file never saved)
-    ERROR_UNKNOWN = 8
-    ERROR_FATAL = 9
-    PROCESSING = 10  # being crunched by barber (when we cannot track stdout)
-    CANCELLED = 11
+    QUEUED = auto(), 'Queued'
+    FACE_ALIGN = auto(), 'Face Align'
+    BARBER_INIT = auto(), 'Initializing'
+    EMBEDDING = auto(), 'Embedding'
+    MASK_STEP1 = auto(), 'Mask Step1'
+    MASK_STEP2 = auto(), 'Mask Step2'
+    ALIGN_STEP1 = auto(), 'Align Step1'
+    ALIGN_STEP2 = auto(), 'Align Step2'
+    #MASK_STEP1_SECOND = auto(), 'Mask Step1 (2/2)'
+    #MASK_STEP2_SECOND = auto(), 'Mask Step2 (2/2)'
+    #ALIGN_STEP1_SECOND = auto(), 'Align Step1 (2/2)'
+    #ALIGN_STEP2_SECOND = auto(), 'Align Step2 (2/2)'
+    BLEND = auto(), 'Blend'
+    COMPLETE = auto(), 'Complete'
+    ERROR_FACE_ALIGN = auto(), 'Error with Face Align'  # image is too squished or no face detected (file never saved)
+    ERROR_UNKNOWN = auto(), 'Unknown Error'
+    ERROR_FATAL = auto(), 'Fatal Error'
+    PROCESSING = auto(), 'Processing...'  # being crunched by barber (when we cannot track stdout)
+    CANCELLED = auto(), 'Task Cancelled'
 
 
 app = Flask(__name__)
@@ -58,8 +65,17 @@ SERVING_TEMPLATE_INPUT_DIRECTORY = os.path.join(BARBERSHOP_DIR, 'input', 'face')
 TEMPLATE_DIRECTORY_FILE_LIST = [f for f in os.listdir(SERVING_TEMPLATE_INPUT_DIRECTORY)
                                 if os.path.isfile(os.path.join(SERVING_TEMPLATE_INPUT_DIRECTORY, f))]
 
-PATTERN_IMAGE_NUMBER = re.compile('Number of images: (\\d+)')
-PATTERN_EMBEDDING_PROGRESS = re.compile('(\\d+)\\D*(\\d+)\\D*(\\d+)\\D*(\\d+:\\d+)<\\??(\\d+:\\d+)\\D*(\\d+\\.\\d+)')
+PATTERN_IMAGE_NUMBER = re.compile(r'Number of images: (\d+)')
+#PATTERN_EMBEDDING_PROGRESS = re.compile(r'(\d+)\D*(\d+)\D*(\d+)\D*(\d+:\d+)<\??(\d+:\d+)\D*(\d+\.\d+)')
+#(Embedding|Images|Create Target Mask Step\d*|Align Step \d*|Blend):\s*(\d+)\D*(\d+)\D*(\d+)\D*(\d+:\d+)<(\?|\d+:\d+),\s*(\?|\d+\.\d+)
+
+# Standard names captured groups not supported in python, except if starting with 'P'
+#   P?<name>
+#(?<name>Embedding|Images|Create Target Mask Step\d*|Align Step \d*|Blend):\s*(?<percentage>\d+)\D*(?<numerator>\d+)\D*(?<denominator>\d+)\D*(?<actual>\d+:\d+)<(?<estimate>\?|\d+:\d+),\s*(?<rate>\?|\d+\.\d+)
+# https://regexr.com/7v2uj
+PATTERN_ANY_STAGE = re.compile(r'(?P<name>Embedding|Images|Create Target Mask Step\d*|Align Step \d*|Blend):\s*'
+                               r'(?P<percentage>\d+)\D*(?P<numerator>\d+)\D*(?P<denominator>\d+)\D*'
+                               r'(?P<actual>\d+:\d+)<(?P<estimate>\?|\d+:\d+),\s*(?P<rate>\?|\d+\.\d+)')
 
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
@@ -119,6 +135,7 @@ class CompiledProcess:
         self.quality = quality
 
         self.status = TaskStatus.QUEUED
+        #self.detailed_status = ''
         self.time_queued = time.perf_counter()  # point in seconds
         self.time_align_started = 0  # point in seconds
         self.time_barber_started = 0  # point in seconds
@@ -236,6 +253,8 @@ class CompiledProcess:
                 os.path.join(self._abs_unprocessed_dir(), self.unprocessed_face_path),
                 os.path.join(self._abs_input_dir(), self.unprocessed_face_path))
 
+        self.set_status_concurrent(TaskStatus.PROCESSING)
+
         if walk_single_file(self._abs_input_dir()) is None:
             self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
             print('Image align did not recognize face; too squished?')
@@ -246,30 +265,6 @@ class CompiledProcess:
         os.makedirs(os.path.join(self._abs_output_dir(), 'FS'), exist_ok=True)
         os.makedirs(os.path.join(self._abs_output_dir(), 'Blend_realistic'), exist_ok=True)
         os.makedirs(os.path.join(self._abs_output_dir(), 'Align_realistic'), exist_ok=True)
-
-        self.set_status_concurrent(TaskStatus.PROCESSING)
-
-        args = [
-            sys.executable, self._barbershop_main(),
-            '--input_dir', self._abs_input_dir(),
-            "--im_path1", self._walk_rel_input_face_file(),  # face
-            "--im_path2", self._rel_input_style_file(),  # style
-            "--im_path3", self._rel_input_color_file(),  # color
-            "--sign", 'realistic',
-            "--smooth", '5',
-
-            "--output_dir", self._abs_output_dir()  # work_output_directory
-        ] + self._step_args()
-
-        std_deque = StdDeque()
-        num_images = 0
-
-        with task_status_lock:
-            self.time_barber_started = time.perf_counter()
-
-        # skip stats if low quality. will take barely any time
-        perform_stats = self.quality > 0.03 and not self._is_fallback_barbershop()
-        initial_barbar_duration_estimate = 0
 
         _proc_buffered_line = []
 
@@ -291,6 +286,21 @@ class CompiledProcess:
 
                 return ''
 
+        with task_status_lock:
+            self.time_barber_started = time.perf_counter()
+
+        args = [
+                   sys.executable, self._barbershop_main(),
+                   '--input_dir', self._abs_input_dir(),
+                   "--im_path1", self._walk_rel_input_face_file(),  # face
+                   "--im_path2", self._rel_input_style_file(),  # style
+                   "--im_path3", self._rel_input_color_file(),  # color
+                   "--sign", 'realistic',
+                   "--smooth", '5',
+
+                   "--output_dir", self._abs_output_dir()  # work_output_directory
+               ] + self._step_args()
+
         barber_proc = PtyProcess.spawn(
             ' '.join(args),
             cwd=self._barbershop_dir(),
@@ -309,8 +319,20 @@ class CompiledProcess:
         barber_proc_watchdog = threading.Thread(target=_watcher, name='BarberTaskWatchdog')
         barber_proc_watchdog.start()
 
-        current_image_stage = 0
+        current_image_number = 0
         current_transformer_stage = ''
+        #current_transformer_percentage100 = 0
+        std_deque = StdDeque()
+        image_count = 0
+        skip_stats = self.quality < 0.03 or self._is_fallback_barbershop()
+        initial_barbar_duration_estimate = 0
+        mask_or_align_iteration = 1
+        #detailed_status = ''
+        last_status_detail_update_time = time.perf_counter()
+
+        print(f'skipping stats: {skip_stats}')
+
+        self.set_status_concurrent(TaskStatus.BARBER_INIT)
 
         while 1:
             try:
@@ -318,54 +340,93 @@ class CompiledProcess:
             except (EOFError, ConnectionAbortedError):
                 break
 
-            # TODO ever empty?
-            #assert line
+            if barber_proc.exitstatus is not None:
+                break
 
-            if line:
-                print(line)
-                # should scope better
+            if line and not skip_stats:
+                #print(line)
 
-                # read something like this
-                # Images:  33%|███▎      | 1/3 [01:27<02:55, 87.95s/it]
-                # TODO move up
-                pattern1 = re.compile(r'^Images:\s*(\d+)%')
+                """
+                Image count extraction (once)
+                """
+                if image_count == 0:
+                    match_image_count = PATTERN_IMAGE_NUMBER.search(line)
+                    if match_image_count is not None:
+                        image_count = int(match_image_count.group(1))
 
-                # (measures progress in terms of what image we are on /3)
-                match = pattern1.search(line)
-                if match is not None:
-                    # do something
-                    current_image_stage = int(match.group(1))
+                """
+                Embedded matcher
+                """
+                match_any_stage = PATTERN_ANY_STAGE.search(line)
+                if match_any_stage is not None:
+                    """
+                    Current stage info extractor
+                    """
+                    # little optimization to not lock every print
+                    _current_transformer_stage = match_any_stage.group('name')
+                    _current_transformer_percentage100 = int(match_any_stage.group('percentage'))
+                    if _current_transformer_stage != current_transformer_stage:
+                        current_transformer_stage = _current_transformer_stage
+
+                        print('updated status')
+
+                        with task_status_lock:
+                            match current_transformer_stage:
+                                case 'Embedding':
+                                    self.status = TaskStatus.EMBEDDING
+                                case 'Create Target Mask Step1':
+                                    mask_or_align_iteration += 1
+                                    self.status = TaskStatus.MASK_STEP1
+                                case 'Create Target Mask Step2':
+                                    self.status = TaskStatus.MASK_STEP2
+                                case 'Align Step 1':
+                                    self.status = TaskStatus.ALIGN_STEP1
+                                case 'Align Step 2':
+                                    self.status = TaskStatus.ALIGN_STEP2
+                                case 'Blend':
+                                    self.status = TaskStatus.BLEND
+                                case _:
+                                    pass
+
+                    # TODO create an updater for this
+                    #current_transformer_percentage100 = _current_transformer_percentage100
 
 
 
-                # actually already have embedded matcher
-                #pattern2 = re.compile(r'')
-                #current_transformer_stage
+                    """
+                    TODO 'Images' extractor
+                    """
+                    """
+                    if current_transformer_stage == 'Images':
+                        _current_image_number = match_any_stage.group('numerator')
+                        if current_image_number != _current_image_number:
+                            current_image_number = _current_image_number
+                            # TODO update embedded iteration string and progress
+                            #detailed_status = '%s' % 'h'
+                    """
 
 
 
-                if perform_stats:
-                    if num_images == 0:
-                        match = PATTERN_IMAGE_NUMBER.search(line)
-                        if match is not None:
-                            num_images = int(match.group(1))
-                    elif initial_barbar_duration_estimate == 0:
-                        match = PATTERN_EMBEDDING_PROGRESS.search(line)
-                        if match is not None:
-                            val = float(match.group(6))
+                    """
+                    Time predictor (once)
+                    """
+                    if initial_barbar_duration_estimate == 0:
+                        rate_str = match_any_stage.group('rate')
+                        if rate_str != '?':
+                            val = float(rate_str)
                             std_deque.append(val)
                             if std_deque.is_consistent(0.05):
                                 reliable_it_s = std_deque.average()
 
                                 # calculate estimate time for entire process:
-                                total_steps = (self._w_steps() + self._fs_steps()) * num_images \
-                                    + (self._align_steps1() + self._align_steps2()) * 2 + self._blend_steps()
+                                total_steps = (self._w_steps() + self._fs_steps()) * image_count \
+                                            + (self._align_steps1() + self._align_steps2()) * 2 + self._blend_steps()
 
                                 # target mask (step1 / step2 ) both times
                                 total_steps += 80 * 4
 
                                 # subtract current step
-                                total_steps -= int(match.group(2))
+                                total_steps -= int(match_any_stage.group('numerator'))
 
                                 initial_barbar_duration_estimate = total_steps / reliable_it_s
 
@@ -375,10 +436,7 @@ class CompiledProcess:
 
                                 print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
 
-            elif barber_proc.exitstatus is not None:
-                break
-
-            time.sleep(0.001)
+            time.sleep(0)
 
         barber_proc_watchdog.join()
 
@@ -612,8 +670,11 @@ def api_status():
         # time.time()
 
         js = {
-            'status': task.status.name,
-            'status-value': task.status.value,
+            # TODO optionally include this without the name
+            #'status': task.status.name,
+            'status': task.status.name, # raw status value
+            'status-label': task.status.value[1], # status readeable
+            #'status-value': task.status.value,
             'time-queued': task.time_queued,
             'time-align-started': task.time_align_started,
             'time-barber-started': task.time_barber_started,

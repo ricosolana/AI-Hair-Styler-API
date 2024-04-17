@@ -15,7 +15,7 @@ def process():
         bar = tqdm(range(200), desc='Embedding', leave=False)
 
         for _ in bar:
-            time.sleep(0.1)
+            time.sleep(0.01)
 
 
 if __name__ == '__main__':

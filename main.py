@@ -14,7 +14,7 @@ import time
 import numpy as np
 from enum import Enum
 import collections
-#import traceback
+import traceback
 from winpty import PtyProcess
 
 import cv2
@@ -70,10 +70,12 @@ app.config['JWT_COOKIE_SECURE'] = True  # cookies over https only
 app.config['JWT_SECRET_KEY'] = os.environ.setdefault('JWT_SECRET_KEY', secrets.token_urlsafe(32))
 jwt = JWTManager(app)
 
-def walk_single_file(_dir: str | os.PathLike) -> str | None:
+
+def walk_single_file(_dir: str, name_pattern=None) -> str | None:
+    pattern = re.compile(name_pattern) if name_pattern is not None else None
     with os.scandir(_dir) as entries:
         for entry in entries:
-            if entry.is_file():
+            if entry.is_file() and (name_pattern is None or pattern.search(entry.name)):
                 return os.path.abspath(entry.path)
     return None
 
@@ -109,14 +111,14 @@ class MyLock:
         self._lock = threading.Lock()
 
     def __enter__(self):
-        print(f'__enter__ acquiring... {threading.current_thread().name}')
+        #print(f'__enter__ acquiring... {threading.current_thread().name}')
         self._lock.acquire()
-        print(f'__enter__ acquired. {threading.current_thread().name}')
+        #print(f'__enter__ acquired. {threading.current_thread().name}')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        print(f'__exit__ releasing... {threading.current_thread().name}')
+        #print(f'__exit__ releasing... {threading.current_thread().name}')
         self._lock.release()
-        print(f'__exit__ released. {threading.current_thread().name}')
+        #print(f'__exit__ released. {threading.current_thread().name}')
 
 
 task_queue = queue.Queue(maxsize=1000)
@@ -314,66 +316,104 @@ class CompiledProcess:
         perform_stats = self.quality > 0.03 and not self._is_fallback_barbershop()
         initial_barbar_duration_estimate = 0
 
-        #proc_line_buffer = []
-        def readlinelike(proc):
-            buf = []
+        _proc_buffered_line = []
+        def readline(proc: PtyProcess, blocking=True, ctrl_chars=True):
             while 1:
                 try:
+                    #ch = proc.pty.read(1, blocking=blocking)
                     ch = proc.read(1)
                 except EOFError:
-                    return ''.join(buf)
-                buf.append(ch)
-                if ch in ('\n', '\r'):
-                    return ''.join(buf)
+                    # abort, return unfinished
+                    return ''.join(_proc_buffered_line)
+
+                if ch == '':
+                    print('GOT AN EMPTY readline()')
+
+                if ch:
+                    if ch in ('\n', '\r'):
+                        out = ''.join(_proc_buffered_line)
+                        _proc_buffered_line.clear()
+                        return out
+
+                    if ctrl_chars or ord(ch) >= 0x20:
+                        _proc_buffered_line.append(ch)
+
+                return ''
 
         barber_proc = PtyProcess.spawn(
             ' '.join(args),
             cwd=self._barbershop_dir(),
             env=os.environ)
-        #barber_proc.pty.read(1)
+
+        def _watcher():
+            while barber_proc.isalive():
+                if barber_proc.exitstatus is not None:
+                    try:
+                        barber_proc.close()
+                    finally:
+                        break
+
+                time.sleep(0.01)
+
+            #print('watchdog exiting')
+
+        barber_proc_watchdog = threading.Thread(target=_watcher, name='BarberTaskWatchdog')
+        barber_proc_watchdog.start()
+
         while True:
             try:
-                line = readlinelike(barber_proc)
-            except EOFError:
-                print('Breaking')
+                line = readline(barber_proc, blocking=False, ctrl_chars=False)
+            except (EOFError, ConnectionAbortedError) as e:
+                print('barber_proc EOF; Breaking')
                 #print(traceback.format_exc())
                 break
 
-            if perform_stats:
-                if num_images == 0:
-                    match = PATTERN_IMAGE_NUMBER.search(line)
-                    if match is not None:
-                        num_images = int(match.group(1))
-                elif initial_barbar_duration_estimate == 0:
-                    match = PATTERN_EMBEDDING_PROGRESS.search(line)
-                    if match is not None:
-                        val = float(match.group(6))
-                        std_deque.append(val)
-                        if std_deque.is_consistent(0.05):
-                            reliable_it_s = std_deque.average()
+            if line:
+                #print(line)
+                if perform_stats:
+                    if num_images == 0:
+                        match = PATTERN_IMAGE_NUMBER.search(line)
+                        if match is not None:
+                            num_images = int(match.group(1))
+                    elif initial_barbar_duration_estimate == 0:
+                        match = PATTERN_EMBEDDING_PROGRESS.search(line)
+                        if match is not None:
+                            val = float(match.group(6))
+                            std_deque.append(val)
+                            if std_deque.is_consistent(0.05):
+                                reliable_it_s = std_deque.average()
 
-                            # calculate estimate time for entire process:
-                            total_steps = (self._w_steps() + self._fs_steps()) * num_images \
-                                + self._align_steps1() + self._align_steps2() + self._blend_steps()
+                                # calculate estimate time for entire process:
+                                total_steps = (self._w_steps() + self._fs_steps()) * num_images \
+                                    + self._align_steps1() + self._align_steps2() + self._blend_steps()
 
-                            # target mask (step1 / step2 ) both times
-                            total_steps += 80 * 4
+                                # target mask (step1 / step2 ) both times
+                                total_steps += 80 * 4
 
-                            # subtract current step
-                            total_steps -= int(match.group(2))
+                                # subtract current step
+                                total_steps -= int(match.group(2))
 
-                            initial_barbar_duration_estimate = total_steps / reliable_it_s
+                                initial_barbar_duration_estimate = total_steps / reliable_it_s
 
-                            with task_status_lock:
-                                self.time_barber_estimate = time.perf_counter()
-                                self.initial_barber_duration_estimate = initial_barbar_duration_estimate
+                                with task_status_lock:
+                                    self.time_barber_estimate = time.perf_counter()
+                                    self.initial_barber_duration_estimate = initial_barbar_duration_estimate
 
-                            print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
+                                print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
+
+            elif barber_proc.exitstatus is not None:
+                break
+
+            time.sleep(0.001)
+
+        print('Waiting on barber_proc_watchdog')
+        barber_proc_watchdog.join()
 
         print('Completed')
 
-        result = barber_proc.exitstatus
-        if result == 0:
+        if walk_single_file(self._abs_output_dir(), '^image') is not None:
+        #result = barber_proc.exitstatus
+        #if result == 0:
             print('Success')
             self.set_status_concurrent(TaskStatus.COMPLETE)
             return True
@@ -400,12 +440,12 @@ def worker():
         print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
-        success = False
-        try:
-            success = task_current.execute()
-        except Exception:
+        #success = False
+        #try:
+        success = task_current.execute()
+        #except Exception:
             #print(traceback.format_exc())
-            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
+            #task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
 
         end_time = time.perf_counter()
 
@@ -585,6 +625,7 @@ def serve_generated(path):
         return jsonify({'message': 'Quality must be an integer'}), 400
 
     if os.path.exists(safe_path):
+        # TODO replace with above walk_single_file with regex for ^image
         with os.scandir(safe_path) as entries:
             for entry in entries:
                 # ^([0-9a-f]{64})_(.+)_(.+)_(\w+).png

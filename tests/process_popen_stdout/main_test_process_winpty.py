@@ -63,7 +63,7 @@ def process():
 
         #print(line.encode('utf-8'))
         print(line)
-        time.sleep(0.01)
+        time.sleep(0.001)
 
     print(proc.exitstatus)
 

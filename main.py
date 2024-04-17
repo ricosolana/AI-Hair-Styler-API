@@ -144,6 +144,8 @@ class CompiledProcess:
 
         self.initial_barber_duration_estimate = 0  # duration in seconds
 
+        self.current_transformer_percentage100 = None
+
     # Constant
     def _abs_unprocessed_dir(self):
         return os.path.abspath(os.path.join(FACES_UNPROCESSED_INPUT_DIRECTORY,
@@ -371,6 +373,8 @@ class CompiledProcess:
                         print('updated status')
 
                         with task_status_lock:
+                            # immediately updates for outdated periodic check
+                            self.current_transformer_percentage100 = 0
                             match current_transformer_stage:
                                 case 'Embedding':
                                     self.status = TaskStatus.EMBEDDING
@@ -391,7 +395,15 @@ class CompiledProcess:
                     # TODO create an updater for this
                     #current_transformer_percentage100 = _current_transformer_percentage100
 
-
+                    now = time.perf_counter()
+                    # update status detail every few seconds or so
+                    if now - last_status_detail_update_time >= 1:
+                        last_status_detail_update_time = now
+                        # update detail
+                        # TODO is lock necessary here
+                        with task_status_lock:
+                            self.current_transformer_percentage100 = _current_transformer_percentage100
+                            #self.detailed_status = '%s' % self.status.value[1]
 
                     """
                     TODO 'Images' extractor
@@ -672,8 +684,9 @@ def api_status():
         js = {
             # TODO optionally include this without the name
             #'status': task.status.name,
-            'status': task.status.name, # raw status value
-            'status-label': task.status.value[1], # status readeable
+            'status': task.status.name,  # raw status value
+            'status-label': task.status.value[1],  # status readeable
+            'current-transformer-percentage': task.current_transformer_percentage100,
             #'status-value': task.status.value,
             'time-queued': task.time_queued,
             'time-align-started': task.time_align_started,

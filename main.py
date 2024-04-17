@@ -1,5 +1,4 @@
-import datetime
-import io
+import collections
 import json
 import os
 import queue
@@ -8,14 +7,9 @@ import secrets
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-import numpy as np
 from enum import Enum
-import collections
-import traceback
-from winpty import PtyProcess
 
 import cv2
 import numpy as np
@@ -23,8 +17,10 @@ import werkzeug.security
 from flask import Flask, jsonify, request, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
+from winpty import PtyProcess
 
 PROGRAM_START_TIME = time.perf_counter()
+
 
 class TaskStatus(Enum):
     QUEUED = 0
@@ -102,36 +98,12 @@ class StdDeque:
         return np.average(self._deque)
 
 
-#class CompiledProcess:
-#    pass
-
-
-class MyLock:
-    def __init__(self):
-        self._lock = threading.Lock()
-
-    def __enter__(self):
-        #print(f'__enter__ acquiring... {threading.current_thread().name}')
-        self._lock.acquire()
-        #print(f'__enter__ acquired. {threading.current_thread().name}')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        #print(f'__exit__ releasing... {threading.current_thread().name}')
-        self._lock.release()
-        #print(f'__exit__ released. {threading.current_thread().name}')
-
-
 task_queue = queue.Queue(maxsize=1000)
 task_status_map = {}
-#task_status_lock = threading.Lock()
-task_status_lock = MyLock()
+task_status_lock = threading.Lock()
 
 
 class CompiledProcess:
-    # thread-safe
-    # TODO is this needed? reassignment is odd
-    #task_current: CompiledProcess
-
     def __init__(self,
                  work_id: str,
                  unprocessed_face_path: str | os.PathLike,
@@ -154,11 +126,6 @@ class CompiledProcess:
         self.time_barber_ended = 0  # point in seconds
 
         self.initial_barber_duration_estimate = 0  # duration in seconds
-
-#    def get_progress(self):
-        # somehow after reading from stdout, retrieve some
-        # stats to get some good estimations on where we are
-#        pass
 
     # Constant
     def _abs_unprocessed_dir(self):
@@ -244,18 +211,6 @@ class CompiledProcess:
         with task_status_lock:
             self.status = status
 
-    """
-    def __enter__(self):
-        print(f'__enter__ acquiring... {threading.current_thread().name}')
-        task_status_lock.acquire()
-        print(f'__enter__ acquired. {threading.current_thread().name}')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        print(f'__exit__ releasing... {threading.current_thread().name}')
-        CompiledProcess.task_status_lock.release()
-        print(f'__exit__ released. {threading.current_thread().name}')
-    """
-
     def execute(self):
         with task_status_lock:
             self.time_align_started = time.perf_counter()
@@ -317,17 +272,13 @@ class CompiledProcess:
         initial_barbar_duration_estimate = 0
 
         _proc_buffered_line = []
-        def readline(proc: PtyProcess, blocking=True, ctrl_chars=True):
+
+        def readline(proc: PtyProcess, ctrl_chars=True):
             while 1:
                 try:
-                    #ch = proc.pty.read(1, blocking=blocking)
                     ch = proc.read(1)
                 except EOFError:
-                    # abort, return unfinished
                     return ''.join(_proc_buffered_line)
-
-                if ch == '':
-                    print('GOT AN EMPTY readline()')
 
                 if ch:
                     if ch in ('\n', '\r'):
@@ -355,21 +306,44 @@ class CompiledProcess:
 
                 time.sleep(0.01)
 
-            #print('watchdog exiting')
-
         barber_proc_watchdog = threading.Thread(target=_watcher, name='BarberTaskWatchdog')
         barber_proc_watchdog.start()
 
-        while True:
+        current_image_stage = 0
+        current_transformer_stage = ''
+
+        while 1:
             try:
-                line = readline(barber_proc, blocking=False, ctrl_chars=False)
-            except (EOFError, ConnectionAbortedError) as e:
-                print('barber_proc EOF; Breaking')
-                #print(traceback.format_exc())
+                line = readline(barber_proc, ctrl_chars=False)
+            except (EOFError, ConnectionAbortedError):
                 break
 
+            # TODO ever empty?
+            #assert line
+
             if line:
-                #print(line)
+                print(line)
+                # should scope better
+
+                # read something like this
+                # Images:  33%|███▎      | 1/3 [01:27<02:55, 87.95s/it]
+                # TODO move up
+                pattern1 = re.compile(r'^Images:\s*(\d+)%')
+
+                # (measures progress in terms of what image we are on /3)
+                match = pattern1.search(line)
+                if match is not None:
+                    # do something
+                    current_image_stage = int(match.group(1))
+
+
+
+                # actually already have embedded matcher
+                #pattern2 = re.compile(r'')
+                #current_transformer_stage
+
+
+
                 if perform_stats:
                     if num_images == 0:
                         match = PATTERN_IMAGE_NUMBER.search(line)
@@ -385,7 +359,7 @@ class CompiledProcess:
 
                                 # calculate estimate time for entire process:
                                 total_steps = (self._w_steps() + self._fs_steps()) * num_images \
-                                    + self._align_steps1() + self._align_steps2() + self._blend_steps()
+                                    + (self._align_steps1() + self._align_steps2()) * 2 + self._blend_steps()
 
                                 # target mask (step1 / step2 ) both times
                                 total_steps += 80 * 4
@@ -406,22 +380,11 @@ class CompiledProcess:
 
             time.sleep(0.001)
 
-        print('Waiting on barber_proc_watchdog')
         barber_proc_watchdog.join()
 
-        print('Completed')
-
         if walk_single_file(self._abs_output_dir(), '^image') is not None:
-        #result = barber_proc.exitstatus
-        #if result == 0:
-            print('Success')
             self.set_status_concurrent(TaskStatus.COMPLETE)
             return True
-
-        #except Exception:
-            #print(traceback.format_exc())
-
-        print('Failure')
 
         self.set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
         return False
@@ -431,11 +394,6 @@ def worker():
     while True:
         # blocks until item available, pops it
         task_current: CompiledProcess = task_queue.get()
-
-        # lock
-        #with task_status_lock:
-            #CompiledProcess.task_current = task_current
-            #task_status_map[task_current.work_id] = task_current
 
         print(f'Processing {task_current.work_id}')
 

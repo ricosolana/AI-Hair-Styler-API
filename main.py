@@ -447,8 +447,8 @@ class CompiledProcess:
                                     self.initial_barber_duration_estimate = initial_barbar_duration_estimate
 
                                 print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
-
-            time.sleep(0)
+            else:
+                time.sleep(0)
 
         barber_proc_watchdog.join()
 

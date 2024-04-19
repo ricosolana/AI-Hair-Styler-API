@@ -147,7 +147,7 @@ class CompiledProcess:
         self.utc_barber_estimate = 0  # point in seconds
         self.utc_barber_ended = 0  # point in seconds
 
-        self.initial_barber_duration_estimate = 0  # duration in seconds
+        self.initial_barber_duration_estimate = None  # duration in seconds
 
         self.current_transformer_percentage100 = None
 
@@ -335,7 +335,7 @@ class CompiledProcess:
         std_deque = StdDeque()
         image_count = 0
         skip_stats = self.quality < 0.03 or self._is_fallback_barbershop()
-        initial_barbar_duration_estimate = 0
+        initial_barbar_duration_estimate = None
         mask_or_align_iteration = 1
         #detailed_status = ''
         last_status_detail_update_time = _utc_timestamp()
@@ -430,7 +430,7 @@ class CompiledProcess:
                     """
                     Time predictor (once)
                     """
-                    if initial_barbar_duration_estimate == 0:
+                    if initial_barbar_duration_estimate is None:
                         rate_str = match_any_stage.group('rate')
                         if rate_str != '?':
                             val = float(rate_str)
@@ -448,7 +448,7 @@ class CompiledProcess:
                                 # subtract current step
                                 total_steps -= int(match_any_stage.group('numerator'))
 
-                                initial_barbar_duration_estimate = total_steps / reliable_it_s
+                                initial_barbar_duration_estimate = round(total_steps / reliable_it_s)
 
                                 with task_status_lock:
                                     self.utc_barber_estimate = _utc_timestamp()

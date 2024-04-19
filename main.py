@@ -37,9 +37,10 @@ class TaskStatus(Enum):
     #ALIGN_STEP2_SECOND = auto(), 'Align Step2 (2/2)'
     BLEND = auto(), 'Blend'
     COMPLETE = auto(), 'Complete'
-    ERROR_FACE_ALIGN = auto(), 'Error with Face Align'  # image is too squished or no face detected (file never saved)
+    FATAL_FACE_ALIGN = auto(), 'Fatal: Face Align'  # image is too squished or no face detected (file never saved)
+    ERROR_FACE_ALIGN_IMAGE = auto(), 'Error: Face Align: Image might be too squished'
     ERROR_UNKNOWN = auto(), 'Unknown Error'
-    ERROR_FATAL = auto(), 'Fatal Error'
+    ERROR_FATAL = auto(), 'Fatal (Failed)'
     PROCESSING = auto(), 'Processing...'  # being crunched by barber (when we cannot track stdout)
     CANCELLED = auto(), 'Task Cancelled'
 
@@ -247,7 +248,7 @@ class CompiledProcess:
             ], env=os.environ, cwd=self._barbershop_dir())
 
             if align_proc.returncode != 0:
-                self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
+                self.set_status_concurrent(TaskStatus.FATAL_FACE_ALIGN)
                 # error, we should note this
                 return False
         else:
@@ -258,7 +259,7 @@ class CompiledProcess:
         self.set_status_concurrent(TaskStatus.PROCESSING)
 
         if walk_single_file(self._abs_input_dir()) is None:
-            self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN)
+            self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN_IMAGE)
             print('Image align did not recognize face; too squished?')
             return False
 

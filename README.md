@@ -24,6 +24,12 @@ to run:
 If you get a URL error showing weights fail to download from pytorch, failed, 
 just keep trying the command above.
 
+## Wireshark
+- Capture filter: 
+  - tcp port 80
+- Display filter:
+  - http.request.uri.path=="/api/barber"
+
 ## Subprocess spawn tips
 
 Getting an module import error?
@@ -51,7 +57,7 @@ Python correct executable (maybe global).
     - Barber API does not need to worry about authentication
     - The nginx can ensure JWT authentication through another proxy...
 
-## Self signed certificates
+## Self-signed certificates
 - Creating certs
   - https://mariadb.com/docs/server/security/data-in-transit-encryption/create-self-signed-certificates-keys-openssl/
 

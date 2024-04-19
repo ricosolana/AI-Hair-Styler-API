@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from enum import Enum, auto
 
 import cv2
@@ -310,7 +311,8 @@ class CompiledProcess:
             env=os.environ)
 
         def _watcher():
-            while barber_proc.isalive():
+            #while barber_proc.isalive():
+            while 1:
                 if barber_proc.exitstatus is not None:
                     try:
                         barber_proc.close()
@@ -451,7 +453,9 @@ class CompiledProcess:
             else:
                 time.sleep(0)
 
-        barber_proc_watchdog.join()
+        #print('joining watchdog...')
+        barber_proc_watchdog.join(timeout=10)
+        #print('joined watchdog thread')
 
         if walk_single_file(self._abs_output_dir(), '^image') is not None:
             self.set_status_concurrent(TaskStatus.COMPLETE)
@@ -469,12 +473,12 @@ def worker():
         print(f'Processing {task_current.work_id}')
 
         start_time = time.perf_counter()
-        #success = False
-        #try:
-        success = task_current.execute()
-        #except Exception:
-            #print(traceback.format_exc())
-            #task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
+        success = False
+        try:
+            success = task_current.execute()
+        except Exception:
+            print(traceback.format_exc())
+            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
 
         end_time = time.perf_counter()
 
@@ -612,11 +616,13 @@ def api_barber():
     os.makedirs(unprocessed_input_dir, exist_ok=True)
     f.stream.seek(0)
 
+    """
     h, w, _ = cv_image.shape
     image_is_uneven = h != w
     if image_is_uneven:
         # resize image to fit
         cv_image = cv2.resize(cv_image, (min(w, h), min(w, h)))
+    """
 
     cv2.imwrite(os.path.join(unprocessed_input_dir, unprocessed_file_name), cv_image)
 

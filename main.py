@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 from enum import Enum, auto
 
 import cv2
@@ -19,8 +20,6 @@ from flask import Flask, jsonify, request, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from werkzeug.utils import secure_filename
 from winpty import PtyProcess
-
-PROGRAM_START_TIME = time.perf_counter()
 
 
 class TaskStatus(Enum):
@@ -121,6 +120,10 @@ task_status_map = {}
 task_status_lock = threading.Lock()
 
 
+def _utc_timestamp():
+    return round(datetime.now(timezone.utc).timestamp())
+
+
 class CompiledProcess:
     def __init__(self,
                  work_id: str,
@@ -138,11 +141,11 @@ class CompiledProcess:
 
         self.status = TaskStatus.QUEUED
         #self.detailed_status = ''
-        self.time_queued = time.perf_counter()  # point in seconds
-        self.time_align_started = 0  # point in seconds
-        self.time_barber_started = 0  # point in seconds
-        self.time_barber_estimate = 0  # point in seconds
-        self.time_barber_ended = 0  # point in seconds
+        self.utc_queued = _utc_timestamp()  # point in seconds
+        self.utc_align_started = 0  # point in seconds
+        self.utc_barber_started = 0  # point in seconds
+        self.utc_barber_estimate = 0  # point in seconds
+        self.utc_barber_ended = 0  # point in seconds
 
         self.initial_barber_duration_estimate = 0  # duration in seconds
 
@@ -233,8 +236,10 @@ class CompiledProcess:
             self.status = status
 
     def execute(self):
+        datetime.now(timezone.utc)
+
         with task_status_lock:
-            self.time_align_started = time.perf_counter()
+            self.utc_align_started = _utc_timestamp()
 
         # Generate align output directory
         os.makedirs(self._abs_input_dir(), exist_ok=True)
@@ -291,7 +296,7 @@ class CompiledProcess:
                 return ''
 
         with task_status_lock:
-            self.time_barber_started = time.perf_counter()
+            self.utc_barber_started = _utc_timestamp()
 
         args = [
                    sys.executable, self._barbershop_main(),
@@ -333,7 +338,7 @@ class CompiledProcess:
         initial_barbar_duration_estimate = 0
         mask_or_align_iteration = 1
         #detailed_status = ''
-        last_status_detail_update_time = time.perf_counter()
+        last_status_detail_update_time = _utc_timestamp()
 
         print(f'skipping stats: {skip_stats}')
 
@@ -398,7 +403,7 @@ class CompiledProcess:
                     # TODO create an updater for this
                     #current_transformer_percentage100 = _current_transformer_percentage100
 
-                    now = time.perf_counter()
+                    now = _utc_timestamp()
                     # update status detail every few seconds or so
                     if now - last_status_detail_update_time >= 1:
                         last_status_detail_update_time = now
@@ -446,7 +451,7 @@ class CompiledProcess:
                                 initial_barbar_duration_estimate = total_steps / reliable_it_s
 
                                 with task_status_lock:
-                                    self.time_barber_estimate = time.perf_counter()
+                                    self.utc_barber_estimate = _utc_timestamp()
                                     self.initial_barber_duration_estimate = initial_barbar_duration_estimate
 
                                 print(f'Initial time estimate: {initial_barbar_duration_estimate}s')
@@ -472,7 +477,7 @@ def worker():
 
         print(f'Processing {task_current.work_id}')
 
-        start_time = time.perf_counter()
+        start_time = _utc_timestamp()
         success = False
         try:
             success = task_current.execute()
@@ -480,14 +485,14 @@ def worker():
             print(traceback.format_exc())
             task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
 
-        end_time = time.perf_counter()
+        end_time = _utc_timestamp()
 
         print(f'Task {task_current.work_id} '
               f'{"succeeded" if success else "failed"} after {end_time - start_time} seconds')
 
         # lock
         with task_status_lock:
-            task_current.time_barber_ended = end_time
+            task_current.utc_barber_ended = end_time
 
         task_queue.task_done()
 
@@ -683,29 +688,15 @@ def api_status():
         if not task:
             return jsonify({'message': 'Task not found'}), 400
 
-        duration_barber = task.time_barber_ended - task.time_barber_started
-        estimate = task.initial_barber_duration_estimate
-
-        # time.time()
-
         js = {
-            # TODO optionally include this without the name
-            #'status': task.status.name,
-            'status': task.status.name,  # raw status value
-            'status-label': task.status.value[1],  # status readeable
+            'status': task.status.name,  # enum name
+            'status-label': task.status.value[1],  # extended name
             'current-transformer-percentage': task.current_transformer_percentage100,
-            #'status-value': task.status.value,
-            'time-queued': task.time_queued,
-            'time-align-started': task.time_align_started,
-            'time-barber-started': task.time_barber_started,
-            #'time-barber-started': task.time_barber_started(),
-            'time-barber-ended': task.time_barber_ended,
-            'initial-barber-duration-estimate': estimate,
-            #'initial-barber-duration-estimate': task.initial_barber_duration_estimate(),
-            #'duration-estimate-difference': ((estimate - duration_barber) / estimate) if estimate != 0 else 0,
-            'duration-barber': duration_barber,
-            #'duration-barber': task.duration_barber()
-            #'utc-estimated-end'
+            'utc-queued': task.utc_queued,
+            'utc-align-started': task.utc_align_started,
+            'utc-barber-started': task.utc_barber_started,
+            'utc-barber-ended': task.utc_barber_ended,
+            'initial-barber-duration-estimate': task.initial_barber_duration_estimate,
         }
 
         return jsonify(js)

@@ -1,6 +1,9 @@
 import argparse
 import os
+import time
+
 import cv2
+from tqdm import tqdm
 
 
 def save_samples(args):
@@ -19,6 +22,10 @@ def save_samples(args):
     # fake image to show we did some "processing"
     image = cv2.imread(os.path.abspath(im_path1))
     inverted_image = ~image
+
+    bar = tqdm(range(200), desc='Embedding', leave=False)
+    for _ in bar:
+        time.sleep(0.05)
 
     cv2.imwrite(output_image_path, inverted_image)
 

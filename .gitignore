@@ -8,3 +8,4 @@ TEST_CASE_1/image.jpeg
 TEST_CASE_1/image.zip
 TEST_CASE_1/image1.jpg
 force_login_rsolana.py
+.venv/

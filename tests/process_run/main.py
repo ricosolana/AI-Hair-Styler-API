@@ -5,13 +5,15 @@ import sys
 import sys
 print(sys.executable)
 
-BARBER_ALIGN = 'C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/align_face.py'
+#BARBER_ALIGN = 'C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/align_face.py'
+BARBER_ALIGN = 'C:/Users/tobin/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/align_face.py'
 
 process_method = 'system'
 
 if process_method == 'system':
     os.system(f'python {BARBER_ALIGN} '
-              f'-unprocessed_dir C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/unprocessed'
+              #f'-unprocessed_dir C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/unprocessed'
+              f'-unprocessed_dir C:/Users/tobin/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/unprocessed'
               f'-output_dir ./output')
 
 elif process_method == 'system2':
@@ -28,7 +30,8 @@ elif process_method == 'subprocess':
     ],
         env=os.environ,
         shell=True,
-        cwd='C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/')
+        #cwd='C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/')
+        cwd='C:/Users/tobin/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main/')
 
     exitcode = align_proc.returncode
 
@@ -42,7 +45,8 @@ elif process_method == 'subprocess2':
     #subprocess.check_call(['C:/Users/rico/AppData/Local/Programs/Python/Python310/python.exe', '-c', 'print("Hello World")'])
     #subprocess.check_call([r'C:\Python34_x32\python.exe', '-c', 'print("Hello World")'])
     subprocess.check_call(
-        ['cmd.exe', 'C:/Users/rico/AppData/Local/Programs/Python/Python310/python.exe', BARBER_ALIGN])
+        #['cmd.exe', 'C:/Users/rico/AppData/Local/Programs/Python/Python310/python.exe', BARBER_ALIGN])
+        ['cmd.exe', 'C:/Users/tobin/AppData/Local/Programs/Python/Python310/python.exe', BARBER_ALIGN])
 
 elif process_method == 'win32':
     print('NYI')

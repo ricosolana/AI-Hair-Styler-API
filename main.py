@@ -737,5 +737,6 @@ def api_barber_status():
     # TODO return process status
 """
 
-app.run(host='127.0.0.1', port=80)
+#app.run(host='127.0.0.1', port=80)
+app.run(host='192.168.50.99', port=80)
 #app.run(host='192.168.137.1', port=80)

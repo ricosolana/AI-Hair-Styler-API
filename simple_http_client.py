@@ -37,7 +37,8 @@ def test_api_barber(img_file):
     #access_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTcxMjk3Njg0NiwianRpIjoiNTVkNTdhYWUtNDEyOC00MDljLThlNmItYzJkMjMzNzNmYjU3IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFub255bW91cyIsIm5iZiI6MTcxMjk3Njg0NiwiY3NyZiI6IjA5ZjczZDY0LTgwZTEtNGE3Mi05MjkwLTVhMDYwMzE1NzZhZiIsImV4cCI6MTcxMzA2MzI0Nn0.cJPspiUR2zogCAC2tcVrZ94GdVrqEFvm0TABOHz402w'
     #url = 'http://localhost/api/barber'
     #url = 'http://localhost/api/barber'
-    url = 'https://killdeer-concrete-urgently.ngrok-free.app/api/barber'
+    #url = 'https://killdeer-concrete-urgently.ngrok-free.app/api/barber'
+    url = 'https://ebinnflowin.asuscomm.com/api/barber'
 
     headers = {
         'Authorization': f'Bearer {access_token}'

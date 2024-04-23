@@ -4,7 +4,8 @@ import subprocess
 import sys
 import time
 
-BARBERSHOP_DIR = 'C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main'
+#BARBERSHOP_DIR = 'C:/Users/rico/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main'
+BARBERSHOP_DIR = 'C:/Users/tobin/Documents/GitHub/BarbershopAI-Fork-3/Barbershop-main-20240402T181303Z-001/Barbershop-main'
 BARBERSHOP_MAIN = os.path.join(BARBERSHOP_DIR, 'main.py')
 
 args = [

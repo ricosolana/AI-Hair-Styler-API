@@ -142,10 +142,10 @@ class CompiledProcess:
         self.status = TaskStatus.QUEUED
         #self.detailed_status = ''
         self.utc_queued = _utc_timestamp()  # point in seconds
-        self.utc_align_started = 0  # point in seconds
-        self.utc_barber_started = 0  # point in seconds
-        self.utc_barber_estimate = 0  # point in seconds
-        self.utc_barber_ended = 0  # point in seconds
+        self.utc_align_started = None  # point in seconds
+        self.utc_barber_started = None  # point in seconds
+        self.utc_barber_estimate = None  # point in seconds
+        self.utc_barber_ended = None  # point in seconds
 
         self.initial_barber_duration_estimate = None  # duration in seconds
 

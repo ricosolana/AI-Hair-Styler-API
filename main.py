@@ -114,6 +114,9 @@ class StdDeque:
     def average(self):
         return np.average(self._deque)
 
+    def max(self):
+        return np.max(self._deque)
+
 
 task_queue = queue.Queue(maxsize=1000)
 task_status_map = {}
@@ -435,8 +438,8 @@ class CompiledProcess:
                         if rate_str != '?':
                             val = float(rate_str)
                             std_deque.append(val)
-                            if std_deque.is_consistent(0.05):
-                                reliable_it_s = std_deque.average()
+                            if std_deque.is_consistent():
+                                reliable_it_s = std_deque.max()
 
                                 # calculate estimate time for entire process:
                                 total_steps = (self._w_steps() + self._fs_steps()) * image_count \

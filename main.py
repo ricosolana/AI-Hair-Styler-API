@@ -36,13 +36,13 @@ class TaskStatus(Enum):
     #ALIGN_STEP1_SECOND = auto(), 'Align Step1 (2/2)'
     #ALIGN_STEP2_SECOND = auto(), 'Align Step2 (2/2)'
     BLEND = auto(), 'Blend'
-    COMPLETE = auto(), 'Complete'
-    FATAL_FACE_ALIGN = auto(), 'Fatal: Face Align'  # image is too squished or no face detected (file never saved)
-    ERROR_FACE_ALIGN_IMAGE = auto(), 'Error: Face Align: Image might be too squished'
-    ERROR_UNKNOWN = auto(), 'Unknown Error'
-    ERROR_FATAL = auto(), 'Fatal (Failed)'
+    DONE_SUCCESS = auto(), 'Complete'  # rename to something more
+    DONE_FATAL_FACE_ALIGN = auto(), 'Fatal: Face Align'  # image is too squished or no face detected (file never saved)
+    DONE_ERROR_FACE_ALIGN_IMAGE = auto(), 'Error: Face Align: Image might be too squished'
+    DONE_ERROR_UNKNOWN = auto(), 'Unknown Error'
+    DONE_ERROR_FATAL = auto(), 'Fatal (Failed)'
     PROCESSING = auto(), 'Processing...'  # being crunched by barber (when we cannot track stdout)
-    CANCELLED = auto(), 'Task Cancelled'
+    DONE_CANCELLED = auto(), 'Task Cancelled'
 
 
 app = Flask(__name__)
@@ -257,7 +257,7 @@ class CompiledProcess:
             ], env=os.environ, cwd=self._barbershop_dir())
 
             if align_proc.returncode != 0:
-                self.set_status_concurrent(TaskStatus.FATAL_FACE_ALIGN)
+                self.set_status_concurrent(TaskStatus.DONE_FATAL_FACE_ALIGN)
                 # error, we should note this
                 return False
         else:
@@ -268,7 +268,7 @@ class CompiledProcess:
         self.set_status_concurrent(TaskStatus.PROCESSING)
 
         if walk_single_file(self._abs_input_dir()) is None:
-            self.set_status_concurrent(TaskStatus.ERROR_FACE_ALIGN_IMAGE)
+            self.set_status_concurrent(TaskStatus.DONE_ERROR_FACE_ALIGN_IMAGE)
             print('Image align did not recognize face; too squished?')
             return False
 
@@ -466,10 +466,10 @@ class CompiledProcess:
         #print('joined watchdog thread')
 
         if walk_single_file(self._abs_output_dir(), '^image') is not None:
-            self.set_status_concurrent(TaskStatus.COMPLETE)
+            self.set_status_concurrent(TaskStatus.DONE_SUCCESS)
             return True
 
-        self.set_status_concurrent(TaskStatus.ERROR_UNKNOWN)
+        self.set_status_concurrent(TaskStatus.DONE_ERROR_UNKNOWN)
         return False
 
 
@@ -486,7 +486,7 @@ def worker():
             success = task_current.execute()
         except Exception:
             print(traceback.format_exc())
-            task_current.set_status_concurrent(TaskStatus.ERROR_FATAL)
+            task_current.set_status_concurrent(TaskStatus.DONE_ERROR_FATAL)
 
         end_time = _utc_timestamp()
 
@@ -567,7 +567,7 @@ def index_path():
 # This endpoint is accessible only from localhost
 @app.route('/auth/token', methods=['GET'])
 def api_auth_token():
-    if request.remote_addr != '127.0.0.1' or request.headers['Host'] != 'localhost':
+    if request.remote_addr not in ('127.0.0.1', '10.171.6.2'):  # or request.headers['Host'] != 'localhost':
         return jsonify({'message': 'Must be localhost'}), 403  # Forbidden
 
     # Generate a token without requiring user_id or any other data
@@ -740,5 +740,6 @@ def api_barber_status():
     # TODO return process status
 """
 
-app.run(host='127.0.0.1', port=80)
+#app.run(host='127.0.0.1', port=80)
 #app.run(host='192.168.137.1', port=80)
+app.run(host='10.171.6.2', port=80)

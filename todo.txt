@@ -1,0 +1,132 @@
+TODO
+    native device capture
+        on real, not emulator
+
+    Editor still blocking during build
+        actually expected ~200+ expensive elements
+        
+        loading bar shouldnt freeze
+        
+        just defer loading elements until later
+
+    add feature to disable dynamic requests / animated progress bar
+
+    android emulator high cpu usage, just app or ?
+        test on native device or out of screen
+        
+        high utilization when in work screen
+            due to tween animation?
+            
+            is running every frame
+            
+            confirm only does utilize more when animating (or making requests?)
+
+    require that templates are cached prior to opening editor
+
+    Test timeout / finish implementing
+
+
+    
+    add link open to directly open image in browser
+
+    show estimation and actual progress
+        compare estimate to actual
+        
+    Share button
+
+    API progress check
+        
+        Embedding: *(\d+)%\|[^|]*\| *(\d+)\/(\d+) *\[(\d+):(\d+)<(\d+):(\d+), *(\d+.\d+)
+        
+        tmp.seek(0, io.SEEK_SET)
+        
+        whether breakpoint pauses Popen subprocess from running
+        
+        b'\rEmbedding:  94%|\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x8d| 940/1000 [00:09<00:00, 95.13it/s]\r...repeats
+        
+        read from a \r to next \r (ignoring leading characters)
+        
+    fix image rendering in progress check
+        cache check / try to draw:
+            onError:
+                send a barber status request:
+                    if complete:
+                        bruh redraw
+                    else
+                        show the status as icon / ...
+                    
+                    later progress meter / time will be cooler
+                    
+    tell the user to send images as a square
+        maybe allow the server to crop or force-resize an image to fit this
+        
+        the server already resizes the image in align_faces.py
+        
+    task completion notifications
+        client will poll every so often
+    
+    state flow of choosing image after opening editor
+        no image chosen, button stay grayed out
+    
+    add timeout in settings
+        for all http requests, or categorized?
+            
+    task cancellation
+    
+    settings add hosts recents
+        to quickly switch between hosts
+
+
+
+TODO (Advanced)
+    add dev log in settings
+        show error logs
+
+    rate limit the API
+    
+    proper jwt login
+        username and salt-hashed password
+        
+        username and time-based password (auth app)
+
+
+
+FINISHED
+    show reload on overscroll
+        show reload also when not initially on top of screen
+        
+    task progress checking
+        read barbershop stdin and parse hellish
+
+    changes to host while work in screen being performed
+        breaks that work.
+        
+        attach profiles to work...
+        maybe v2
+
+    enum display works for progress display
+
+    TODO adjust width of slider
+        almost always accidentally navigates to previous screen
+        
+        more of a temporary fix,
+            will be prevalent regardless of device, 
+            unless layout adjustments are followed
+
+    for some reason, exceptions not being caught and prints not 'printing
+        when barber image is finished?
+        
+        why is exception silent
+        
+        <was blocking>
+
+    fix api thread blocking issue
+        HMM, AT SECOND GLANCE, SEEMS TO BE NO BLOCKING ISSUE?
+
+    image saving from completed work
+        automatic or wait for user? add settings option
+                
+        where to save:
+            - default hardcoded app directory
+            - prompt the user for the path
+            - save to a path specified in settings
